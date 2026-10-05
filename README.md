@@ -131,9 +131,13 @@ request takes whole 1,600-token blocks plus its Mamba state. In practice the cei
 - **Official sampling:** `temperature 0.7, top_p 0.8, presence_penalty 1.5`. At temperature 0 it loops.
 - **Never fewer than 10 experts.** Below that quality drops and there is no speed gain.
 - **MTP-3** is optimal; MTP-4 ties and uses more memory.
-- **The KV cache cannot be fp8**: the QSA indexer requires BF16 (`NotImplementedError`).
+- **Keep the KV cache in BF16.** Stock v0.30 rejects fp8 (`NotImplementedError`). Patched to allow it, the KV grows
+  58 % but decode drops 11 % (lower MTP acceptance), concurrency does not improve (the per-request Mamba state
+  dominates) and prefix-cache hits get twice as slow (3,200-token blocks).
 - **If memory is short, lower `max-model-len`**, not `gpu-memory-utilization`: below ~0.70 it hangs while loading weights.
 - **Put the stable part first in the prompt**: any early change breaks the prefix cache.
+- **`prefix-cache-retention-interval: 1600`** makes a fixed prefix (system prompt, documents) with a new tail
+  hit from its first reuse (18k prefix: 6.2 → 3.7 s TTFT). Without it, v0.30 only hits from the second reuse.
 - No reasoning: `chat_template_kwargs: {"enable_thinking": false}`.
 
 ## Operations

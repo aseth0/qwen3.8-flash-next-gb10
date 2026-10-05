@@ -2,8 +2,8 @@
 # The api-key does NOT go here: the container gets it via VLLM_API_KEY (.env file).
 # Measured on a DGX Spark: sql 55.7 / refactor 57.0 / prose 51.5 t/s; HumanEval+ 157/150; τ² 58/74.
 #
-# Measured rules (see README): never < 10 experts, MTP-3 is optimal, the KV cache can NOT be
-# fp8 (the QSA indexer requires BF16) and util 0.715 (v0.30 subtracts graphs before the KV).
+# Measured rules (see README): never < 10 experts, MTP-3 is optimal, keep the KV cache in BF16
+# (stock v0.30 rejects fp8; patched, it is slower) and util 0.715 (v0.30 subtracts graphs before the KV).
 # If memory is short, lower max-model-len, not the util.
 model: /models/qwen3.8-flash-next-nvfp4-plebf16
 served-model-name: qwen3.8-flash-next
@@ -14,6 +14,10 @@ max-num-seqs: 16
 max-num-batched-tokens: 8192
 enable-prefix-caching: true
 mamba-cache-mode: align
+# v0.30 retains only "semantic" Mamba checkpoints by default (0), so a fixed prefix with a new tail
+# only hits from its 2nd reuse. 1600 also keeps periodic ones: the 1st reuse of an 18k prefix drops
+# from 6.2 s to 3.7 s TTFT, with no measured cost in speed, concurrency or retrieval.
+prefix-cache-retention-interval: 1600
 enable-chunked-prefill: true
 reasoning-parser: qwen3
 enable-auto-tool-choice: true
