@@ -1,0 +1,21 @@
+# Qwen3.8-Flash-Next on vLLM v0.30.0 for GB10 (DGX Spark, ASUS Ascent GX10…).
+# The api-key does NOT go here: the container gets it via VLLM_API_KEY (.env file).
+# Measured on a DGX Spark: sql 55.7 / refactor 57.0 / prose 51.5 t/s; HumanEval+ 157/150; τ² 58/74.
+#
+# Measured rules (see README): never < 10 experts, MTP-3 is optimal, the KV cache can NOT be
+# fp8 (the QSA indexer requires BF16) and util 0.715 (v0.30 subtracts graphs before the KV).
+# If memory is short, lower max-model-len, not the util.
+model: /models/qwen3.8-flash-next-nvfp4-plebf16
+served-model-name: qwen3.8-flash-next
+load-format: safetensors
+gpu-memory-utilization: 0.715
+max-model-len: 131072
+max-num-seqs: 16
+max-num-batched-tokens: 8192
+enable-prefix-caching: true
+mamba-cache-mode: align
+enable-chunked-prefill: true
+reasoning-parser: qwen3
+enable-auto-tool-choice: true
+tool-call-parser: qwen3_coder
+speculative-config: '{"method":"mtp","num_speculative_tokens":3}'

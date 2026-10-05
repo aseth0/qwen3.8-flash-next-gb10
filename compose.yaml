@@ -1,0 +1,52 @@
+# git clone → cp .env.example .env → docker compose build
+#   → docker compose run --rm prepare   (once: downloads and converts the weights)
+#   → docker compose up -d flashnext → scripts/verify.sh
+name: flashnext
+
+x-imagen: &imagen
+  image: flashnext-gb10:v030
+  build:
+    context: ./docker
+    args:
+      BASE: vllm/vllm-openai@sha256:8a69ffad015f138d7170c4ddc429e230a3bc1c1719f67e14324749df200a4b90
+
+services:
+  flashnext:
+    <<: *imagen
+    container_name: vllm-fn
+    restart: unless-stopped
+    gpus: all
+    ipc: host
+    shm_size: 16g
+    ports: ["${PORT:-8010}:8000"]
+    environment:
+      VLLM_API_KEY: ${API_KEY:?API_KEY missing in .env}
+      VLLM_PLE_MMAP: "1"
+      VLLM_PLE_MMAP_WORKERS: "32"
+      VLLM_PLE_MMAP_MADVISE: random     # without this the PLE reads ahead and fills RAM
+      VLLM_USE_FLASHINFER_SAMPLER: "1"
+      HF_HUB_OFFLINE: "1"               # the model is local: don't contact HF at startup
+    volumes:
+      - ${MODELS_DIR:?MODELS_DIR missing in .env}:/models:ro
+      - ${CACHE_DIR:-./cache}:/root/.cache/vllm
+      # The FP8 patch reads its layer selection from here; without it, it turns off SILENTLY (−16 %).
+      - ./config/fn_dense_fp8.conf:/root/.cache/vllm/fn_dense_fp8.conf:ro
+      - ./config/model.yaml:/config/model.yaml:ro
+    command: --config /config/model.yaml --no-enable-flashinfer-autotune --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30m                 # the first startup compiles graphs
+      retries: 3
+
+  # Download (pinned revision) and PLE conversion to BF16. Only via `docker compose run`.
+  prepare:
+    <<: *imagen
+    profiles: [prepare]
+    entrypoint: ["bash", "/scripts/prepare-weights.sh"]
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ${MODELS_DIR:?MODELS_DIR missing in .env}:/models
+      - ./scripts:/scripts:ro
