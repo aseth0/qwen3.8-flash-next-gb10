@@ -102,7 +102,7 @@ Measured on a DGX Spark running exactly this config on 2026-10-06, with other id
 what was tried and rejected: [BENCHMARKS.md](BENCHMARKS.md).
 
 **Single request, official sampling** (512 output tokens): **54 t/s** on mixed code and prose prompts.
-Prose alone (4 Spanish prompts × 4): 41 t/s. At temperature 0: SQL 55.7, refactor 58.5, prose 46.8 t/s
+Prose alone (4 prose prompts × 4 runs): 41 t/s. At temperature 0: SQL 55.7, refactor 58.5, prose 46.8 t/s
 (MTP tokens per step 3.22 / 3.39 / 2.70).
 
 **Concurrency** (512 output tokens per request, official sampling, mixed prompts, median of 3 runs):

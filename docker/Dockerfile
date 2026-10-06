@@ -7,7 +7,7 @@
 #     (github.com/myllmbox/qwen38-flash-next-recipe, MIT; see myllmbox/LICENSE.myllmbox). It replaces
 #     whole vLLM files, so it goes FIRST, onto the pristine base; their hashes are checked.
 #     Speculative verify replays only the accepted tokens from one read-only SSM checkpoint instead of
-#     keeping a state copy per draft position: more KV in the same memory (~309k vs ~260-274k tokens).
+#     keeping a state copy per draft position: more KV in the same memory (~309k vs ~250-274k tokens).
 #  2. blazux/qwen3.8-Flash-DGX (Apache-2.0, LICENSE.blazux): PLE via mmap, 2 FLA fixes for GB10,
 #     prefix-cache block_size, clone-on-load for the MoE.
 #  3. This repo: the PLE returns zeros only during memory profiling (vllm_ple_mmap.py), row-wise

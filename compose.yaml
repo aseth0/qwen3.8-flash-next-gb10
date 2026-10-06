@@ -3,7 +3,7 @@
 #   → docker compose up -d flashnext → scripts/verify.sh
 name: flashnext
 
-x-imagen: &imagen
+x-image: &image
   image: flashnext-gb10:v030-rssm     # one tag per release: the previous image stays for rollback
   build:
     context: ./docker
@@ -12,7 +12,7 @@ x-imagen: &imagen
 
 services:
   flashnext:
-    <<: *imagen
+    <<: *image
     container_name: vllm-fn
     restart: unless-stopped
     gpus: all
@@ -45,7 +45,7 @@ services:
 
   # Download (pinned revision) and PLE conversion to BF16. Only via `docker compose run`.
   prepare:
-    <<: *imagen
+    <<: *image
     profiles: [prepare]
     entrypoint: ["bash", "/scripts/prepare-weights.sh"]
     environment:

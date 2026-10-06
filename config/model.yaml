@@ -17,7 +17,7 @@ enable-prefix-caching: true
 mamba-cache-mode: align
 # RecoverSSM (vllm PR #58863): speculative verify replays the accepted tokens from one read-only SSM
 # checkpoint instead of keeping a GDN/PLE state copy per draft position. More KV in the same memory
-# (~309k vs ~260-274k tokens), +45 % aggregate at 16 concurrent, same outputs quality-wise.
+# (~309k vs ~250-274k tokens), +45 % aggregate at 16 concurrent, same outputs quality-wise.
 # Needs Model Runner V2 (VLLM_USE_V2_MODEL_RUNNER=1, set in compose.yaml) and the Triton Mamba backend.
 use-replayssm: true
 mamba-backend: triton

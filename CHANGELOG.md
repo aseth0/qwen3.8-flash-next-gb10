@@ -26,7 +26,7 @@ Changed
   (needed on vLLM ≥ 0.31; no effect on v0.30).
 
 Results (DGX Spark, against v030 started the same way)
-- KV cache ~260-274k → **~294-309k** tokens; 16 concurrent requests 146 → **206-212 t/s** aggregate (all 16 fit).
+- KV cache ~250-274k → **~294-309k** tokens; 16 concurrent requests 146 → **206-212 t/s** aggregate (all 16 fit).
 - Prefix cache, fixed prefix + new tail, 18k: 2nd request 3.6 s → **1.0 s** TTFT. Prefill +3-18 %.
 - Single-request decode, prose and quality unchanged: HumanEval+ 155/150 (v030 157/150), τ² 59/74 (58/74),
   needle 16/16, long agentic 3/3, thinking 24/24, tool-overuse suite identical.

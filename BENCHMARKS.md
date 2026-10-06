@@ -14,7 +14,7 @@ looked faster at temperature 0 and were slower with the official sampling.
 
 | | v030 | **v030-rssm** |
 |---|---|---|
-| KV cache | ~260-274k tokens | **~294-309k** |
+| KV cache | ~250-274k tokens | **~294-309k** |
 | Attention block / prefix retention | 1600 / 1600 | 1696 / 1696 |
 | Single request, official sampling, mixed prompts | 54.0 t/s | 54.4 t/s |
 | Single request, official sampling, prose only | 40.4 t/s | 41.1 t/s |
