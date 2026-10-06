@@ -24,7 +24,10 @@ L=$(docker logs vllm-fn 2>&1 | grep -v APIServer)
 n=$(grep -oP 'fn_dense_fp8: \K[0-9]+' <<<"$L" | tail -1)
 [ "$n" = 145 ] && ok "dense FP8: 145 layers" || bad "dense FP8: '${n:-not active}' (expected 145; is config/fn_dense_fp8.conf missing?)"
 grep -q "built NVFP4 draft head" <<<"$L" && ok "NVFP4 draft head" || bad "NVFP4 draft head not found in the logs"
-grep -oP 'GPU KV cache size: [0-9,]+ tokens' <<<"$L" | tail -1 | sed 's/^/  · /;s/$/  (DGX Spark reference: 239,238)/'
+grep -q "RecoverSSM speculative verify active" <<<"$L" && ok "RecoverSSM verify active" || bad "RecoverSSM not active (use-replayssm / VLLM_USE_V2_MODEL_RUNNER?)"
+bs=$(grep -oP 'Setting attention block size to \K[0-9]+' <<<"$L" | tail -1)
+[ "$bs" = 1696 ] && ok "attention block 1696 (prefix retention 1696)" || bad "attention block '${bs:-?}' (expected 1696; retention must be a multiple of it)"
+grep -oP 'GPU KV cache size: [0-9,]+ tokens' <<<"$L" | tail -1 | sed 's/^/  · /;s/$/  (DGX Spark reference: ~294-309k with embed+whisper running)/'
 
 echo "== generation (official sampling; at temp 0 it loops)"
 KEY=$KEY PORT=$PORT python3 - <<'P' || F=1
@@ -39,7 +42,7 @@ def ask(prompt, n):
     return j["choices"][0]["message"]["content"], j["usage"]["completion_tokens"], dt
 ask("Hello", 8)  # warm-up
 txt, n, dt = ask("Write a Python LRUCache class with O(1) get and put, with docstrings and tests.", 512)
-print(f"  · {n} tokens in {dt:.1f} s = {n/dt:.1f} t/s  (DGX Spark reference, code: ~55-57 t/s; includes prefill)")
+print(f"  · {n} tokens in {dt:.1f} s = {n/dt:.1f} t/s  (DGX Spark reference, code: ~54-58 t/s; includes prefill)")
 print("  · " + txt.strip().splitlines()[0][:100])
 P
 [ "$F" = 0 ] && ok "verified" || { bad "see failures above"; exit 1; }

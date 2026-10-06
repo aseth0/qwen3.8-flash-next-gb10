@@ -1,7 +1,9 @@
-# Qwen3.8-Flash-Next on a GB10 (vLLM v0.30)
+# Qwen3.8-Flash-Next on a GB10 (vLLM v0.30 + RecoverSSM)
 
 Qwen3.8-Flash-Next (NVFP4) served with vLLM v0.30 on NVIDIA GB10 machines: a patched image,
-the vLLM config and helper scripts. Weights and base image are not included; both are public
+the vLLM config and helper scripts. Current release: **`v030-rssm`** (adds RecoverSSM: +45 %
+aggregate throughput at 16 concurrent requests, faster prefix-cache hits, same quality);
+see [CHANGELOG.md](CHANGELOG.md) and [BENCHMARKS.md](BENCHMARKS.md). Weights and base image are not included; both are public
 and are downloaded on the target machine.
 
 **Machines:** any GB10 with 128 GB of unified memory.
@@ -46,6 +48,22 @@ scripts/verify.sh                  # waits, checks the patches and benchmarks
 Endpoint: `http://<host>:8010/v1` (OpenAI-compatible), model `qwen3.8-flash-next`,
 `Authorization: Bearer <API_KEY>`.
 
+### Upgrading from `v030`
+
+The weights do not change and the base image is the same (same digest), so there is no `prepare`
+and no large download: only a few small layers are built on top of the base you already have.
+
+```bash
+git pull
+docker compose build               # new tag flashnext-gb10:v030-rssm; the v030 image stays
+docker compose up -d flashnext     # recreates vllm-fn: ~7 min of downtime (a normal startup)
+scripts/verify.sh                  # now also checks RecoverSSM and the 1696-token block
+```
+
+`.env`, clients, port, model name and API key are unchanged. The vLLM cache now lives in
+`$CACHE_DIR/v030-rssm`, so the old one is left untouched. **Rollback:**
+`git checkout v030 && docker compose up -d flashnext` (its image is still there).
+
 ### Why there is a `prepare` step
 
 vLLM v0.30 cannot read the n-gram table (PLE) in the NVFP4 format of the published checkpoint.
@@ -67,64 +85,65 @@ rsync -a --info=progress2 <other-gb10>:/opt/models-vllm/qwen3.8-flash-next-nvfp4
 | | |
 |---|---|
 | `docker/Dockerfile` | `vllm/vllm-openai:v0.30.0` **pinned by digest** + patches |
+| `docker/myllmbox/overlays-rssm/` | RecoverSSM (vLLM PR #58863, Apache-2.0) ported to v0.30.0 by myllmbox; whole files, base hashes checked |
+| `docker/myllmbox/patches/`, `overlays-v030/` | fused multi-step draft metadata for the QSA cache and a QSA RoPE clamp (myllmbox, MIT) |
 | `docker/vllm_ple_mmap.py` | PLE served via mmap from disk (blazux, Apache-2.0) + zeros during memory profiling |
 | `docker/patch_mamba_block_size.py`, `patch_moe_load_clone.py` | prefix-cache block_size and clone-on-load for the MoE (blazux) |
 | `docker/fn_dense_fp8.py`, `patch_flashnext.py` | row-wise FP8 for the dense Linears (**+16 % on code**) and NVFP4 draft head (**+13-25 %**) |
 | `config/model.yaml` | the vLLM config (no api-key: it comes from `VLLM_API_KEY`) |
 | `config/fn_dense_fp8.conf` | which layers go to FP8. **If missing, the patch silently turns off** |
 | `compose.yaml` | `flashnext` service (container `vllm-fn`) and `prepare` (separate profile) |
+| `CHANGELOG.md`, `BENCHMARKS.md` | what changed per release, and every measurement behind it |
 
 ## Performance (DGX Spark)
 
-Measured on a DGX Spark running exactly this config (speed: 2026-10-05; quality: 2026-09-26).
-Other idle services (embeddings, ASR) were loaded on the same machine.
+Measured on a DGX Spark running exactly this config on 2026-10-06, with other idle services
+(embeddings, ASR) loaded on the same machine. Full tables, the previous release side by side and
+what was tried and rejected: [BENCHMARKS.md](BENCHMARKS.md).
 
-**Single request** (512 output tokens, median of 4 runs):
+**Single request, official sampling** (512 output tokens): **54 t/s** on mixed code and prose prompts.
+Prose alone (4 Spanish prompts × 4): 41 t/s. At temperature 0: SQL 55.7, refactor 58.5, prose 46.8 t/s
+(MTP tokens per step 3.22 / 3.39 / 2.70).
 
-| Workload | t/s | MTP tokens per step |
-|---|---|---|
-| SQL | 54.5 | 3.17 |
-| Code refactor | 55.9 | 3.25 |
-| Prose | 50.6 | 2.95 |
-
-**Concurrency** (512 output tokens per request, official sampling, mixed code and prose prompts,
-median of 3 runs):
+**Concurrency** (512 output tokens per request, official sampling, mixed prompts, median of 3 runs):
 
 | Concurrent requests | Aggregate t/s | Per-request t/s | Median TTFT |
 |---|---|---|---|
-| 1 | 53 | 54 | 0.19 s |
-| 2 | 75 | 39 | 0.32 s |
-| 4 | 94 | 28 | 0.30 s |
-| 8 | 139 | 20 | 0.48 s |
-| 16 | 146 | 18.5 | 0.37 s |
+| 1 | 48-54 | 49-54 | 0.2 s |
+| 2 | 82 | 42 | 0.26 s |
+| 4 | 100 | 29 | 0.37 s |
+| 8 | 144 | 21 | 0.34 s |
+| 16 | **206** | 15 | 0.53 s |
 
-With 16 requests only ~10 run at once and the rest queue: the KV cache reaches 96 % because each
-request takes whole 1,600-token blocks plus its Mamba state. In practice the ceiling is
-**~145 t/s aggregate with ~10 concurrent requests**.
+All 16 now run at once (the previous release queued ~6 of them: 146 t/s).
 
 **Prefill and prefix cache** (a new prompt, then the same prompt again):
 
 | Prompt tokens | TTFT, new prompt | Prefill t/s | TTFT, repeated |
 |---|---|---|---|
-| 1.2k | 0.6 s | 2,000 | 0.5 s |
-| 9.7k | 3.5 s | 2,740 | 0.7 s |
-| 40k | 13.8 s | 2,900 | 1.2 s |
-| 81k | 27.9 s | 2,910 | 1.2 s |
-| 122k | 42.7 s | 2,860 | 1.3 s |
+| 7.8k | 2.8 s | 2,725 | 1.0 s |
+| 32k | 10.8 s | 2,955 | 1.2 s |
+| 65k | 21.8 s | 2,975 | 0.9 s |
+
+Fixed prefix + new tail, without priming (the agent / RAG case): an 18k prefix answers its 2nd
+request in **1.0 s** (previous release: 3.6 s). A conversation growing turn by turn (2.8k → 18k
+tokens) keeps a flat ~1.5 s TTFT.
 
 **Quality:**
 
 | Benchmark | Result |
 |---|---|
-| HumanEval+ (164 problems) | 95.7 % base / 91.5 % plus |
-| τ²-bench retail (74 tasks with deterministic grading, self-play) | 0.784 (58/74) |
-| Needle in a haystack | 16/16 (4/4 at 33k, 67k, 100k and 128k tokens) |
-| Long-context retrieval (12 facts at 17k and 57k tokens) | 12/12, both cold and with a prefix-cache hit |
+| HumanEval+ (164 problems) | 94.5 % base / 91.5 % plus (155 / 150) |
+| τ²-bench retail (74 tasks with deterministic grading, self-play) | 0.797 (59/74) |
+| Needle in a haystack | 16/16 (4/4 at 30k, 60k, 90k and 115k tokens) |
+| Long agentic scenarios (multi-step tool use, 3 scenarios) | 3/3 |
+| Thinking mode (24 coding tasks, 8k tokens) | 24/24, no truncation |
+| 2-hour soak (472 mixed requests, 3 concurrent) | 0 errors, 0 restarts, no speed drift |
 
-**Memory:** ~88 GiB used, KV cache of 239,238 tokens (1.8 full-length 131k requests).
+**Memory:** same `gpu-memory-utilization`; KV cache of ~294-309k tokens (2.2-2.4 full-length 131k requests).
 
 `verify.sh` reports a code-generation figure that includes prefill: if it is well below
-~50 t/s, check that the logs show `fn_dense_fp8: 145 layers` and the draft head.
+~50 t/s, check that the logs show `fn_dense_fp8: 145 layers`, the draft head and RecoverSSM.
 
 ## Measured rules (don't change without re-measuring)
 
@@ -136,8 +155,9 @@ request takes whole 1,600-token blocks plus its Mamba state. In practice the cei
   dominates) and prefix-cache hits get twice as slow (3,200-token blocks).
 - **If memory is short, lower `max-model-len`**, not `gpu-memory-utilization`: below ~0.70 it hangs while loading weights.
 - **Put the stable part first in the prompt**: any early change breaks the prefix cache.
-- **`prefix-cache-retention-interval: 1600`** makes a fixed prefix (system prompt, documents) with a new tail
-  hit from its first reuse (18k prefix: 6.2 → 3.7 s TTFT). Without it, v0.30 only hits from the second reuse.
+- **`prefix-cache-retention-interval: 1696`** (a multiple of the 1696-token block that RecoverSSM brings) makes a
+  fixed prefix (system prompt, documents) with a new tail hit from its first reuse. Without it, v0.30 only hits
+  from the second reuse. If the block size changes, this must change with it or vLLM refuses to start.
 - No reasoning: `chat_template_kwargs: {"enable_thinking": false}`.
 
 ## Operations
@@ -150,11 +170,14 @@ request takes whole 1,600-token blocks plus its Mamba state. In practice the cei
   empty in RAM and fills with use: the first long requests are slow, that is expected.
 - **`docker stats` is misleading** with unified memory. The real figure:
   `nvidia-smi --query-compute-apps=pid,used_memory --format=csv`.
-- If you change `max-model-len` or `gpu-memory-utilization` and startup never finishes, delete `CACHE_DIR`.
+- If you change `max-model-len` or `gpu-memory-utilization` and startup never finishes, delete `$CACHE_DIR/v030-rssm`.
 
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE). The patches in `docker/vllm_ple_mmap.py`,
 `patch_mamba_block_size.py` and `patch_moe_load_clone.py` come from
 [blazux/qwen3.8-Flash-DGX](https://github.com/blazux/qwen3.8-Flash-DGX), also Apache-2.0
-([docker/LICENSE.blazux](docker/LICENSE.blazux)). The model weights have their own license.
+([docker/LICENSE.blazux](docker/LICENSE.blazux)). `docker/myllmbox/` comes from
+[myllmbox/qwen38-flash-next-recipe](https://github.com/myllmbox/qwen38-flash-next-recipe): its patches are MIT and
+the RecoverSSM overlay is vLLM code (Apache-2.0, vllm-project/vllm PR #58863); see
+[docker/myllmbox/LICENSE.myllmbox](docker/myllmbox/LICENSE.myllmbox). The model weights have their own license.

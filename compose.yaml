@@ -4,7 +4,7 @@
 name: flashnext
 
 x-imagen: &imagen
-  image: flashnext-gb10:v030
+  image: flashnext-gb10:v030-rssm     # one tag per release: the previous image stays for rollback
   build:
     context: ./docker
     args:
@@ -25,10 +25,13 @@ services:
       VLLM_PLE_MMAP_WORKERS: "32"
       VLLM_PLE_MMAP_MADVISE: random     # without this the PLE reads ahead and fills RAM
       VLLM_USE_FLASHINFER_SAMPLER: "1"
+      VLLM_USE_V2_MODEL_RUNNER: "1"     # RecoverSSM requires Model Runner V2 (already the default for this model)
+      MBX_FUSED_DRAFT: "1"              # fused multi-step draft metadata for the QSA cache (0 = stock)
       HF_HUB_OFFLINE: "1"               # the model is local: don't contact HF at startup
     volumes:
       - ${MODELS_DIR:?MODELS_DIR missing in .env}:/models:ro
-      - ${CACHE_DIR:-./cache}:/root/.cache/vllm
+      # One cache subdirectory per release, so a rollback finds its own compiled kernels untouched.
+      - ${CACHE_DIR:-./cache}/v030-rssm:/root/.cache/vllm
       # The FP8 patch reads its layer selection from here; without it, it turns off SILENTLY (−16 %).
       - ./config/fn_dense_fp8.conf:/root/.cache/vllm/fn_dense_fp8.conf:ro
       - ./config/model.yaml:/config/model.yaml:ro

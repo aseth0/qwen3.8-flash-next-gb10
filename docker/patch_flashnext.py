@@ -82,6 +82,10 @@ def _fn_build_quantized_heads(weight: torch.Tensor, org_vocab_size: int) -> dict
         apply_fp4_marlin_linear,
         prepare_fp4_layer_for_marlin,
     )
+    try:  # v0.31+: the Marlin workspace is requested per stream on each call (prepare no longer sets it)
+        from vllm.model_executor.layers.quantization.utils.marlin_utils import get_marlin_workspace
+    except ImportError:
+        get_marlin_workspace = None
 
     logger = init_logger(__name__)
     w = weight.detach()
@@ -117,7 +121,7 @@ def _fn_build_quantized_heads(weight: torch.Tensor, org_vocab_size: int) -> dict
             x = x.to(layer.params_dtype)
         out = apply_fp4_marlin_linear(
             x, layer.weight, layer.weight_scale, layer.weight_global_scale,
-            layer.workspace, vocab, hidden,
+            layer.workspace if hasattr(layer, "workspace") else get_marlin_workspace(x.device), vocab, hidden,
         )
         return out[..., :org_vocab_size]
 
