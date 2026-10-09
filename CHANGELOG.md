@@ -3,6 +3,13 @@
 Releases are git tags; each builds its own image tag (`flashnext-gb10:<tag>`) and uses its own cache
 subdirectory, so going back is `git checkout <tag> && docker compose up -d flashnext`.
 
+## Unreleased
+
+Fixed
+- `check-host.sh` no longer fails when the toolkit is installed but the `nvidia` runtime is not registered
+  with Docker: `--gpus` works through the toolkit's prestart hook (or CDI) with the default `runc`.
+- README: `nvidia-ctk runtime configure` removed from the toolkit install; it is not needed for `--gpus`.
+
 ## v030-rssm — 2026-10-06
 
 **RecoverSSM on top of v030.** Same weights, same base image (same digest), no `prepare` needed.

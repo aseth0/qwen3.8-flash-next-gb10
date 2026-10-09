@@ -27,11 +27,12 @@ if ! dinfo=$(docker info 2>&1); then
   bad "cannot talk to the docker daemon"
   info "$(grep -m1 -iE 'permission denied|cannot connect|error' <<<"$dinfo")"
   info "is your user in the docker group? (sudo usermod -aG docker \$USER and log in again)"
-elif grep -qi 'runtimes.*nvidia' <<<"$dinfo"; then ok "nvidia runtime in docker"
-elif command -v nvidia-ctk >/dev/null; then
-  bad "nvidia-container-toolkit installed but not registered with docker"
-  info "sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
-else bad "nvidia-container-toolkit missing (see README, Requirements)"; fi
+# --gpus does not need the nvidia runtime registered: with the default runc, docker runs the
+# toolkit's prestart hook (or resolves the GPU through CDI). Any of the three paths is enough.
+elif grep -qi 'runtimes.*nvidia' <<<"$dinfo"; then ok "nvidia-container-toolkit (nvidia runtime in docker)"
+elif command -v nvidia-container-runtime-hook >/dev/null; then ok "nvidia-container-toolkit (prestart hook for --gpus)"
+elif grep -qsl 'nvidia.com/gpu' /etc/cdi/* /var/run/cdi/* 2>/dev/null; then ok "nvidia-container-toolkit (CDI spec)"
+else bad "nvidia-container-toolkit missing: --gpus will fail (see README, Requirements)"; fi
 docker compose version >/dev/null 2>&1 && ok "docker compose" || bad "docker compose v2 missing"
 
 echo "== GPU"
