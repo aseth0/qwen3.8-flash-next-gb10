@@ -1,10 +1,10 @@
 # git clone → cp .env.example .env → docker compose build
-#   → docker compose run --rm prepare   (once: downloads and converts the weights)
+#   → docker compose run --rm prepare   (once: downloads the two checkpoints and builds the hybrid)
 #   → docker compose up -d flashnext → scripts/verify.sh
 name: flashnext
 
 x-image: &image
-  image: flashnext-gb10:v030-rssm     # one tag per release: the previous image stays for rollback
+  image: flashnext-gb10:v030-nvidia   # one tag per release: the previous image stays for rollback
   build:
     context: ./docker
     args:
@@ -31,7 +31,7 @@ services:
     volumes:
       - ${MODELS_DIR:?MODELS_DIR missing in .env}:/models:ro
       # One cache subdirectory per release, so a rollback finds its own compiled kernels untouched.
-      - ${CACHE_DIR:-./cache}/v030-rssm:/root/.cache/vllm
+      - ${CACHE_DIR:-./cache}/v030-nvidia:/root/.cache/vllm
       # The FP8 patch reads its layer selection from here; without it, it turns off SILENTLY (−16 %).
       - ./config/fn_dense_fp8.conf:/root/.cache/vllm/fn_dense_fp8.conf:ro
       - ./config/model.yaml:/config/model.yaml:ro
@@ -43,7 +43,7 @@ services:
       start_period: 30m                 # the first startup compiles graphs
       retries: 3
 
-  # Download (pinned revision) and PLE conversion to BF16. Only via `docker compose run`.
+  # Downloads (pinned revisions) and hybrid build. Only via `docker compose run`.
   prepare:
     <<: *image
     profiles: [prepare]

@@ -1,15 +1,18 @@
 # Qwen3.8-Flash-Next on vLLM v0.30.0 + RecoverSSM for GB10 (DGX Spark, ASUS Ascent GX10…).
 # The api-key does NOT go here: the container gets it via VLLM_API_KEY (.env file).
-# Measured on a DGX Spark (see BENCHMARKS.md): 54 t/s single stream, 206 t/s at 16 concurrent;
-# HumanEval+ 155/150; τ² 59/74; needle 16/16 up to 115k.
+# Measured on a DGX Spark (see BENCHMARKS.md): 54-55 t/s single stream, 205 t/s at 16 concurrent;
+# HumanEval+ 156/147; τ² 63/74; needle 16/16 up to 115k.
 #
 # Measured rules (see README): never < 10 experts, MTP-3 is optimal, keep the KV cache in BF16
-# (stock v0.30 rejects fp8; patched, it is slower) and util 0.715 (v0.30 subtracts graphs before the KV).
-# If memory is short, lower max-model-len, not the util.
-model: /models/qwen3.8-flash-next-nvfp4-plebf16
+# (stock v0.30 rejects fp8; patched, it is slower). The KV cache is sized dynamically on purpose (never pinned with
+# kv-cache-memory: that can end in an out-of-memory at runtime); 0.73 instead of 0.715 covers the ~0.5 GiB the NVFP4 PLE
+# loader keeps in buffers. If memory is short, lower max-model-len, not the utilization.
+# Default sampling for clients that send none comes from the checkpoint's generation_config.json (temperature 0.7,
+# top_p 0.8, top_k 20, repetition_penalty 1.05 — the last one stops the tool-call loop the model can enter at temperature 0).
+model: /models/qwen3.8-flash-next-nvfp4-hybrid
 served-model-name: qwen3.8-flash-next
 load-format: safetensors
-gpu-memory-utilization: 0.715
+gpu-memory-utilization: 0.73
 max-model-len: 131072
 max-num-seqs: 16
 max-num-batched-tokens: 8192

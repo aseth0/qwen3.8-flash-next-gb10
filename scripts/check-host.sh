@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Pre-flight host check. Changes nothing.
 # The config is measured on a GB10 (DGX Spark / ASUS Ascent GX10; 121 GiB of unified memory).
-# This decides whether another host can serve it and, if not, why: what usually fails is memory,
-# not the architecture.
+# It says whether this host can serve it and, if not, why: what usually fails is memory, not the architecture.
 set -uo pipefail
 ok(){ echo -e "  \033[32m✓\033[0m $*"; }; bad(){ echo -e "  \033[31m✗\033[0m $*"; F=1; }; warn(){ echo -e "  \033[33m!\033[0m $*"; W=1; }
 info(){ echo "      $*"; }
@@ -11,9 +10,9 @@ ENV_FILE="$(dirname "$0")/../.env"
 MODELS_DIR=${MODELS_DIR:-$(grep -oP '^MODELS_DIR=\K.*' "$ENV_FILE" 2>/dev/null || echo /opt/models-vllm)}
 
 # Requirements measured on a DGX Spark
-NEED_GPU=86     # GiB: weights ~75 + KV + graphs (85.5 actual with util 0.715)
-NEED_PLE=100    # GiB of RAM for the n-gram table via mmap (96 GB; reaches 76 % resident)
-NEED_DISK=210   # GiB: checkpoint 102 + BF16 PLE 96 (+ ~22 of image in /var/lib/docker)
+NEED_GPU=89     # GiB: weights ~77 + KV + graphs (88.8 with util 0.73)
+NEED_PLE=30     # GiB of RAM for the n-gram table via mmap (27 GB in NVFP4; ~85-90 % resident after scripts/ple-fill.sh)
+NEED_DISK=140   # GiB: NVIDIA checkpoint 74 + NVFP4 parts 30 + built files 28 (+ ~22 of image in /var/lib/docker)
 
 echo "== System"
 case "$(uname -m)" in
@@ -61,12 +60,12 @@ if [[ "$vram_mib" =~ ^[0-9]+$ ]]; then
   # Discrete GPU: VRAM and RAM are separate and both must be enough.
   vram=$(( vram_mib / 1024 ))
   warn "discrete GPU: the config is designed for unified memory"
-  info "on a GB10 the GPU reads the PLE table (96 GB) straight from RAM; here it would cross PCIe"
+  info "on a GB10 the GPU reads the PLE table (27 GB) straight from RAM; here it would cross PCIe"
   if [ "$vram" -ge "$NEED_GPU" ]; then ok "VRAM ${vram} GiB (~${NEED_GPU} needed)"
   else bad "VRAM ${vram} GiB: weights and KV need ~${NEED_GPU} GiB"
-       info "not even lowering max-model-len: the weights alone take ~75 GiB"; fi
+       info "not even lowering max-model-len: the weights alone take ~77 GiB"; fi
   if [ "$ram" -ge "$NEED_PLE" ]; then ok "RAM ${ram} GiB for the PLE table (~${NEED_PLE})"
-  else bad "RAM ${ram} GiB: the PLE table (96 GB) doesn't fit and would be served from disk"; fi
+  else bad "RAM ${ram} GiB: the PLE table (27 GB) doesn't fit and would be served from disk"; fi
 else
   # Unified memory: what free reports is what there is for everything.
   if   [ "$ram" -ge 121 ]; then ok "unified memory ${ram} GiB (reference 121)"
@@ -87,7 +86,7 @@ echo
 if [ "$F" = 0 ] && [ "$W" = 0 ]; then ok "host is suitable"; exit 0; fi
 if [ "$F" = 0 ]; then
   warn "it fits, but this config is not validated on this hardware: measure with scripts/verify.sh"
-  info "GB10 reference: ~55 t/s on code; if it's far below, the PLE is the bottleneck"; exit 0
+  info "GB10 reference: ~55 t/s on code; if it's far below, check the patches with scripts/verify.sh"; exit 0
 fi
 echo "  This host cannot serve the config as is."
 if [[ "$vram_mib" =~ ^[0-9]+$ ]] && [ "$(( vram_mib / 1024 ))" -lt "$NEED_GPU" ]; then

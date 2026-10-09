@@ -75,7 +75,11 @@ _TABLE_DTYPES = {
     **_FP8_DTYPES,
     "BF16": torch.bfloat16,
     "F16": torch.float16,
+    # NVFP4 (jstarkg/starkweather layout): weight_packed U8 + weight_scale F8 per shard + weight_global_scale F32;
+    # rows are dequantized on the GPU to bf16 (see MmapNvFp4PleTable).
+    "NVFP4": torch.bfloat16,
 }
+_NVFP4_LEVELS = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
 
 
 def enabled() -> bool:
@@ -251,6 +255,62 @@ class MmapPleTable:
                     pos += n
 
 
+class MmapNvFp4PleTable:
+    """NVFP4 table: per shard ``weight_packed`` [rows, D/2] U8 and ``weight_scale`` [rows, D/16] F8_E4M3, plus one
+    F32 global scale. ``gather`` returns uint8 rows of D/2 + D/16 bytes (packed codes followed by the scales);
+    ``dequant`` turns a device tensor of those rows into bf16 [N, D] with exactly the converter's arithmetic:
+    bf16(float(e2m1 code) * (float(fp8 scale) * global)), all in FP32."""
+
+    def __init__(self, shards: dict[int, tuple[str, int, int, int]], shard_size: int, cols: int,
+                 global_scale: float, workers: int = 32, chunk: int = 2048) -> None:
+        self.cols = int(cols)
+        self.packed_bytes = self.cols // 2
+        self.scale_bytes = self.cols // 16
+        self.packed = MmapPleTable({i: (p, o, r) for i, (p, o, r, _) in shards.items()}, shard_size,
+                                   self.packed_bytes, torch.uint8, workers=workers, chunk=chunk)
+        self.scales = MmapPleTable({i: (p, so, r) for i, (p, _, r, so) in shards.items()}, shard_size,
+                                   self.scale_bytes, torch.uint8, workers=workers, chunk=chunk)
+        self.shard_size = self.packed.shard_size
+        self.rows_total = self.packed.rows_total
+        self.row_bytes = self.packed_bytes + self.scale_bytes
+        self.torch_dtype = torch.bfloat16
+        self.pool = self.packed.pool
+        self.global_scale = float(global_scale)
+        self._levels: dict[torch.device, torch.Tensor] = {}
+
+    def gather(self, ids: np.ndarray) -> np.ndarray:
+        import time as _time
+
+        t0 = _time.perf_counter()
+        try:
+            return np.concatenate((self.packed._gather(ids), self.scales._gather(ids)), axis=1)
+        finally:
+            dt = _time.perf_counter() - t0
+            n = int(np.asarray(ids).size)
+            _STATS["gather_ms"] += dt * 1e3
+            _STATS["rows"] += n
+            _STATS["bytes"] += n * self.row_bytes
+            _prom_add(gather_s=dt, rows=n, bytes=n * self.row_bytes)
+
+    def dequant(self, rows: torch.Tensor) -> torch.Tensor:
+        """rows: uint8 [N, packed_bytes + scale_bytes] on any device -> bf16 [N, cols]."""
+        n = rows.shape[0]
+        levels = self._levels.get(rows.device)
+        if levels is None:
+            levels = torch.tensor(_NVFP4_LEVELS, dtype=torch.float32, device=rows.device)
+            self._levels[rows.device] = levels
+        p = rows[:, : self.packed_bytes]
+        codes = torch.stack((p & 0xF, p >> 4), dim=-1).reshape(n, -1)  # element 2k = low nibble of byte k
+        v = levels[(codes & 7).long()]
+        v = torch.where((codes & 8) > 0, -v, v)
+        eff = rows[:, self.packed_bytes :].view(torch.float8_e4m3fn).float() * self.global_scale
+        return (v.view(n, self.scale_bytes, 16) * eff.unsqueeze(-1)).view(n, self.cols).to(torch.bfloat16)
+
+    def prewarm(self) -> None:
+        self.packed.prewarm()
+        self.scales.prewarm()
+
+
 # --------------------------------------------------------------------------- #
 # Placeholder that stands in for VocabParallelEmbedding
 # --------------------------------------------------------------------------- #
@@ -325,7 +385,10 @@ class _MmapNgramEmbedding(nn.Module):
         else:
             dev = torch.from_numpy(rows).to(ids.device)
         inv = torch.from_numpy(inverse.reshape(-1)).to(ids.device, non_blocking=True)
-        out = dev.view(table.torch_dtype)[inv]
+        if isinstance(table, MmapNvFp4PleTable):
+            out = table.dequant(dev)[inv]
+        else:
+            out = dev.view(table.torch_dtype)[inv]
         t4 = _time.perf_counter()
         _STATS["wait_ms"] += wait_s * 1e3
         _STATS["dedup_ms"] += (t2 - t1) * 1e3
@@ -352,6 +415,16 @@ def _find_shards(
     scale_re = re.compile(
         rf"layers\.{layer_idx}\.ple\.ple_embedding\.ngram_embedding\.weight_scale$"
     )
+    # NVFP4 layout (jstarkg/starkweather): packed codes + per-row FP8 block scales + one global scale
+    packed_re = re.compile(
+        rf"layers\.{layer_idx}\.ple\.ple_embedding\.ngram_embedding\.shard_(\d+)\.weight_packed$"
+    )
+    sscale_re = re.compile(
+        rf"layers\.{layer_idx}\.ple\.ple_embedding\.ngram_embedding\.shard_(\d+)\.weight_scale$"
+    )
+    gscale_re = re.compile(
+        rf"layers\.{layer_idx}\.ple\.ple_embedding\.ngram_embedding\.weight_global_scale$"
+    )
     index_path = os.path.join(model_path, "model.safetensors.index.json")
     if os.path.exists(index_path):
         with open(index_path) as f:
@@ -360,7 +433,8 @@ def _find_shards(
             {
                 os.path.join(model_path, fn)
                 for name, fn in weight_map.items()
-                if shard_re.search(name) or scale_re.search(name)
+                if shard_re.search(name) or scale_re.search(name) or packed_re.search(name)
+                or sscale_re.search(name) or gscale_re.search(name)
             }
         )
     else:
@@ -370,9 +444,32 @@ def _find_shards(
     dtype_str: str | None = None
     scale_entry: tuple[str, int, int, str] | None = None
     cols: int | None = None
+    nv_packed: dict[int, tuple[str, int, int]] = {}
+    nv_scales: dict[int, int] = {}
     for path in files:
         header, data_start = parse_safetensors_header(path)
         for name, meta in header.items():
+            mp = packed_re.search(name)
+            if mp:
+                start, end = meta["data_offsets"]
+                rows, pcols = meta["shape"]
+                if meta["dtype"] != "U8" or end - start != rows * pcols:
+                    raise ValueError(f"PLE NVFP4 shard {name}: dtype/size mismatch")
+                nv_packed[int(mp.group(1))] = (path, data_start + start, rows)
+                cols = pcols * 2
+                dtype_str = "NVFP4"
+                continue
+            ms = sscale_re.search(name)
+            if ms:
+                start, end = meta["data_offsets"]
+                if meta["dtype"] != "F8_E4M3":
+                    raise ValueError(f"PLE NVFP4 scale {name}: dtype {meta['dtype']}")
+                nv_scales[int(ms.group(1))] = data_start + start
+                continue
+            if gscale_re.search(name):
+                start, end = meta["data_offsets"]
+                scale_entry = (path, data_start + start, end - start, meta["dtype"])
+                continue
             m = shard_re.search(name)
             if m:
                 start, end = meta["data_offsets"]
@@ -387,6 +484,13 @@ def _find_shards(
             elif scale_re.search(name):
                 start, end = meta["data_offsets"]
                 scale_entry = (path, data_start + start, end - start, meta["dtype"])
+    if nv_packed:
+        if shards:
+            raise ValueError("PLE: both NVFP4 (weight_packed) and plain shard tensors found")
+        if set(nv_packed) != set(nv_scales):
+            raise ValueError("PLE NVFP4: packed shards and scale shards do not match")
+        # (path, packed_offset, rows, scale_offset): same file for both tensors of a shard here
+        shards = {i: (p, o, r, nv_scales[i]) for i, (p, o, r) in nv_packed.items()}  # type: ignore[misc]
     return shards, dtype_str, scale_entry, cols
 
 
@@ -674,17 +778,27 @@ def _setup_table_v029(self) -> None:
     parts = int(self.split_ngram_parts)
     vocab = int(self.ngram_embedding.org_vocab_size)
     shard_size = math.ceil(vocab / parts)
-    for idx, (_p, _o, rows) in shards.items():
+    for idx, entry in shards.items():
+        rows = entry[2]
         expected = max(0, min(shard_size, vocab - idx * shard_size))
         if rows != expected:
             raise RuntimeError(
                 f"PLE mmap: shard {idx} has {rows} rows, expected {expected}"
             )
-    table = MmapPleTable(
-        shards, shard_size, cols * _itemsize(dtype_str), _TABLE_DTYPES[dtype_str],
-        workers=_env_int("VLLM_PLE_MMAP_WORKERS", 32),
-        chunk=_env_int("VLLM_PLE_MMAP_CHUNK", 2048),
-    )
+    if dtype_str == "NVFP4":
+        if scale_entry is None:
+            raise RuntimeError("PLE mmap: NVFP4 shards without ngram_embedding.weight_global_scale")
+        table = MmapNvFp4PleTable(
+            shards, shard_size, cols, float(_read_scale(scale_entry)),
+            workers=_env_int("VLLM_PLE_MMAP_WORKERS", 32),
+            chunk=_env_int("VLLM_PLE_MMAP_CHUNK", 2048),
+        )
+    else:
+        table = MmapPleTable(
+            shards, shard_size, cols * _itemsize(dtype_str), _TABLE_DTYPES[dtype_str],
+            workers=_env_int("VLLM_PLE_MMAP_WORKERS", 32),
+            chunk=_env_int("VLLM_PLE_MMAP_CHUNK", 2048),
+        )
     if _env_int("VLLM_PLE_MMAP_PREWARM", 0):
         logger.info("PLE mmap: prewarming page cache (%.1f GiB)...", table.rows_total * table.row_bytes / 2**30)
         table.prewarm()
@@ -884,8 +998,13 @@ def _apply_v029(cls: type) -> None:
         rest: list[tuple[str, torch.Tensor]] = []
         dev = torch.accelerator.current_accelerator()
         for name, w in weights:
-            if name.startswith("ngram_embedding.shard_") and name.endswith(".weight"):
-                loaded.add(name)  # served from disk, never materialised
+            if name.startswith("ngram_embedding.shard_") and name.endswith(
+                (".weight", ".weight_packed", ".weight_scale")
+            ):
+                loaded.add(name)  # served from disk, never materialised (BF16/FP8 rows or NVFP4 codes+scales)
+                continue
+            if name == "ngram_embedding.weight_global_scale":
+                loaded.add(name)  # NVFP4 global scale: read from the file by _setup_table
                 continue
             if name == "ngram_embedding.weight_scale":
                 scale = w.detach().to(device=dev)
@@ -1000,8 +1119,13 @@ def _apply_v030(cls: type) -> None:
         rest: list[tuple[str, torch.Tensor]] = []
         dev = torch.accelerator.current_accelerator()
         for name, w in weights:
-            if name.startswith("ngram_embedding.shard_") and name.endswith(".weight"):
-                loaded.add(name)  # served from disk, never materialised
+            if name.startswith("ngram_embedding.shard_") and name.endswith(
+                (".weight", ".weight_packed", ".weight_scale")
+            ):
+                loaded.add(name)  # served from disk, never materialised (BF16/FP8 rows or NVFP4 codes+scales)
+                continue
+            if name == "ngram_embedding.weight_global_scale":
+                loaded.add(name)  # NVFP4 global scale: read from the file by _setup_table
                 continue
             if name == "ngram_embedding.weight_scale":
                 scale = w.detach().to(device=dev)

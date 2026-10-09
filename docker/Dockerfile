@@ -8,8 +8,8 @@
 #     whole vLLM files, so it goes FIRST, onto the pristine base; their hashes are checked.
 #     Speculative verify replays only the accepted tokens from one read-only SSM checkpoint instead of
 #     keeping a state copy per draft position: more KV in the same memory (~309k vs ~250-274k tokens).
-#  2. blazux/qwen3.8-Flash-DGX (Apache-2.0, LICENSE.blazux): PLE via mmap, 2 FLA fixes for GB10,
-#     prefix-cache block_size, clone-on-load for the MoE.
+#  2. blazux/qwen3.8-Flash-DGX (Apache-2.0, LICENSE.blazux): PLE via mmap (extended here to NVFP4 tables, dequantized on
+#     the GPU), 2 FLA fixes for GB10, prefix-cache block_size, clone-on-load for the MoE.
 #  3. This repo: the PLE returns zeros only during memory profiling (vllm_ple_mmap.py), row-wise
 #     FP8 for the dense Linears (fn_dense_fp8.py, +16 % on code) and NVFP4 draft head (+13-25 %).
 #  4. myllmbox (MIT): fused multi-step draft metadata for the QSA side cache (the code of the upstream
@@ -17,7 +17,7 @@
 #     Their dynamic-MTP-depth patch is deliberately NOT included (measured: no effect at MTP-3).
 ARG BASE=vllm/vllm-openai@sha256:8a69ffad015f138d7170c4ddc429e230a3bc1c1719f67e14324749df200a4b90
 FROM ${BASE}
-LABEL qwen38.base=v0.30 qwen38.extra="recoverssm-58863 qsa-fused-draft qsa-rope-clamp"
+LABEL qwen38.base=v0.30 qwen38.extra="recoverssm-58863 qsa-fused-draft qsa-rope-clamp ple-mmap-nvfp4"
 ARG SP=/usr/local/lib/python3.12/dist-packages
 
 # --- 1. RecoverSSM: whole-file overlay onto the verified v0.30.0 base ---
@@ -50,4 +50,4 @@ import vllm.model_executor.layers.mamba.gdn.recoverssm_gdn; from vllm.config.cac
 assert 'use_recoverssm' in CacheConfig.__dataclass_fields__; \
 import vllm.models.qwen4_exp.nvidia.mtp as m; assert '_fn_build_quantized_heads' in inspect.getsource(m); \
 import vllm.models.qwen4_exp.nvidia.model as mm; assert 'enable_fn_dense_fp8' in inspect.getsource(mm) and 'SupportsReplaySSM' in inspect.getsource(mm); \
-print('flashnext-gb10 v030-rssm OK')"
+print('flashnext-gb10 v030-nvidia OK')"
