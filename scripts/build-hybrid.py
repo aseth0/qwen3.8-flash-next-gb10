@@ -12,8 +12,8 @@ of every file named in the index, so the pieces are rewritten into files of thei
 Output <dst>/: relative symlinks to NVIDIA's shards, `model-mtp-experts-nvfp4.safetensors` (6,144 tensors),
 `model-ple-nvfp4.safetensors` (257 tensors), a regenerated index, config.json / hf_quant_config.json with the MTP experts
 as NVFP4 and the PLE unquantized (the mmap loader builds the table itself), and generation_config.json with this config's
-default sampling (temperature 0.7, top_p 0.8, top_k 20, repetition_penalty 1.05: at temperature 0 the model can loop on
-tool calls, and clients that send temperature 0 never send a repetition penalty, so the server default is what stops it).
+default sampling (temperature 0.7, top_p 0.8, top_k 20). No repetition_penalty: the 1.05 shipped until 2026-10-25 stopped
+the tool-call loop at temperature 0, but over long texts it drops accents and letters (see BENCHMARKS.md).
 
 Usage: build-hybrid.py <nvidia_dir> <stark_dir> <dst>      (idempotent: existing output files are kept)"""
 import json, os, struct, sys, time
@@ -109,7 +109,7 @@ hq["quantization"]["quantized_layers"]["mtp.layers.0.mlp.experts"] = {"quant_alg
 hq["quantization"]["quantized_layers"].pop("model.language_model.layers.1.ple.ple_embedding.ngram_embedding", None)
 json.dump(hq, open(os.path.join(DST, "hf_quant_config.json"), "w"), indent=2)
 gen = json.load(open(os.path.join(NV, "generation_config.json")))
-gen.update({"temperature": 0.7, "top_p": 0.8, "top_k": 20, "repetition_penalty": 1.05})
+gen.update({"temperature": 0.7, "top_p": 0.8, "top_k": 20}); gen.pop("repetition_penalty", None)
 json.dump(gen, open(os.path.join(DST, "generation_config.json"), "w"), indent=4)
 
 seen = {}

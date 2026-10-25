@@ -5,6 +5,14 @@ subdirectory, so going back is `git checkout <tag> && docker compose up -d flash
 
 ## Unreleased
 
+Changed
+- No server-side `repetition_penalty` any more (2026-10-25). The 1.05 default stopped the tool-call loop at temperature 0,
+  but vLLM applies it to every token already seen in prompt and output, and over long texts the model then drops accents
+  and letters (3-4 misspellings per 1,600-word essay; 25 in a 2,380-token rewrite; none at 1.0 — see BENCHMARKS.md).
+  HumanEval+ with the official sampling and no penalty: 156 / 149 (with it: 156 / 147 and 155 / 149).
+  `scripts/build-hybrid.py` leaves it out, `verify.sh` checks that it is absent. Checkpoints built earlier: delete the
+  `repetition_penalty` line from `/models/qwen3.8-flash-next-nvfp4-hybrid/generation_config.json` and restart.
+
 ## v030-nvidia — 2026-10-09
 
 **Official NVIDIA experts, NVFP4 n-gram table in RAM, no conversion step.** Same image base and the same

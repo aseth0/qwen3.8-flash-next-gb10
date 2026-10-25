@@ -77,7 +77,21 @@ Greedy decoding is the trigger (the model's known rule: at temperature 0 it loop
 Of the official parameters only `repetition_penalty` can be a server default (`generation_config.json`; vLLM does not read
 `presence_penalty` from it), and OpenAI-style clients never send it, so it applies even to clients that ask for temperature 0.
 Cost, A/B on the same server: none at 1 request; **−5 % aggregate at 8 concurrent** with 1.05 (158 → 150 t/s), −3 % with 1.02.
-The built checkpoint ships 1.05, the value validated with HumanEval+.
+The built checkpoint shipped 1.05 (validated with HumanEval+) until 2026-10-25.
+
+**Removed on 2026-10-25: the penalty misspells long texts.** vLLM applies `repetition_penalty` to every token already seen in
+the prompt and the output, so in a long text every accented sub-token has already appeared and the model picks the unaccented
+variant, which has not. Measured on the production server (Spanish, `enable_thinking: false`):
+
+| test | `repetition_penalty 1.05` | `repetition_penalty 1.0` |
+|---|---|---|
+| 1,600-word essay generated from scratch (3 runs, temperature 0.7 and 0.3) | 3-4 misspellings per text (dropped letters, lost accents, gender agreement) | 0-1 |
+| rewrite of a 2,380-token input (same text) | 25 words lose their accent or a letter | 0 |
+| HumanEval+ (official sampling 0.7 / 0.8 / presence 1.5) | 156 / 147, 155 / 149 | 156 / 149 |
+
+The checkpoint built by `prepare` no longer sets it (`scripts/build-hybrid.py`), and `verify.sh` checks that it is absent. The
+tool-call loop is only reachable at temperature 0, which this config does not use; clients that need the loop breaker can send
+`repetition_penalty` themselves.
 
 ### PLE residency does not change decode speed
 

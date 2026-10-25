@@ -118,8 +118,8 @@ experts with the FP8 PLE, the NVFP4 PLE does not change it):
 | 8 | 140-142 | 18 |
 | 16 | **205** | 13 |
 
-The server-side `repetition_penalty 1.05` default costs about 5 % of aggregate throughput at 8 concurrent requests and
-nothing at 1; see BENCHMARKS.md for why it is there.
+There is no server-side repetition penalty any more (removed 2026-10-25): the earlier `repetition_penalty 1.05` default
+cost about 5 % of aggregate throughput at 8 concurrent requests and dropped accents and letters in long texts; see BENCHMARKS.md.
 
 **Prefix cache** (fixed prefix + new tail, without priming): a 7.4k prefix answers its 2nd request in 0.94 s (first: 2.64 s),
 an 18k prefix in 1.04 s (first: 6.13 s). Same as the previous release.
@@ -128,7 +128,7 @@ an 18k prefix in 1.04 s (first: 6.13 s). Same as the previous release.
 
 | Benchmark | Result |
 |---|---|
-| HumanEval+ (164 problems) | 95.1 % base / 89.6 % plus (156 / 147) |
+| HumanEval+ (164 problems) | 95.1 % base / 90.9 % plus (156 / 149; no repetition penalty, 2026-10-25) |
 | τ²-bench retail (74 tasks with deterministic grading, self-play) | 60-63/74 (0.81-0.85; previous release 57-59/74) |
 | Needle in a haystack | 16/16 (4/4 at 30k, 60k, 90k and 115k tokens) |
 | Long agentic scenarios (multi-step tool use, 3 scenarios) | 3/3 |
@@ -142,9 +142,10 @@ resident in the page cache after `scripts/ple-fill.sh`.
 
 ## Measured rules (don't change without re-measuring)
 
-- **Official sampling:** `temperature 0.7, top_p 0.8, presence_penalty 1.5`. At temperature 0 it loops; the built checkpoint's
-  `generation_config.json` therefore gives every client that sends no sampling parameters temperature 0.7 / top_p 0.8 / top_k 20
-  and a `repetition_penalty` of 1.05, which also stops the loop for clients that insist on temperature 0 (see BENCHMARKS.md).
+- **Official sampling:** `temperature 0.7, top_p 0.8, presence_penalty 1.5`. At temperature 0 it loops on tool calls; the built
+  checkpoint's `generation_config.json` therefore gives every client that sends no sampling parameters temperature 0.7 / top_p 0.8 /
+  top_k 20. It no longer ships a `repetition_penalty`: 1.05 also stopped the loop for clients that insist on temperature 0, but over
+  long texts it drops accents and letters (see BENCHMARKS.md). Don't send temperature 0.
 - **Never fewer than 10 experts.** Below that quality drops and there is no speed gain.
 - **MTP-3** is optimal; MTP-4 ties and uses more memory.
 - **Keep the KV cache in BF16.** Stock v0.30 rejects fp8 (`NotImplementedError`). Patched to allow it, the KV grows

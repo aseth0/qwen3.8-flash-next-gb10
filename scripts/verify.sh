@@ -30,7 +30,8 @@ grep -q "RecoverSSM speculative verify active" <<<"$L" && ok "RecoverSSM verify 
 bs=$(grep -oP 'Setting attention block size to \K[0-9]+' <<<"$L" | tail -1)
 [ "$bs" = 1696 ] && ok "attention block 1696 (prefix retention 1696)" || bad "attention block '${bs:-?}' (expected 1696; retention must be a multiple of it)"
 grep -q "dtype NVFP4" <<<"$L" && ok "PLE table served via mmap in NVFP4 (26.8 GiB)" || bad "PLE loader: NVFP4 table line not found (is the checkpoint the hybrid built by prepare?)"
-grep -q "repetition_penalty" <<<"$(docker logs "$C" 2>&1 | grep -m1 'overridden by')" && ok "server default sampling from generation_config.json (incl. repetition_penalty 1.05)" || bad "generation_config.json defaults not applied"
+ov=$(docker logs "$C" 2>&1 | grep -m1 'overridden by')
+[ -n "$ov" ] && ! grep -q "repetition_penalty" <<<"$ov" && ok "server default sampling from generation_config.json (temperature 0.7 / top_p 0.8 / top_k 20, no repetition penalty)" || bad "generation_config.json defaults not applied, or repetition_penalty still set (checkpoint built before 2026-10-25: rerun scripts/build-hybrid.py or delete its generation_config.json and run prepare)"
 grep -oP 'GPU KV cache size: [0-9,]+ tokens' <<<"$L" | tail -1 | sed 's/^/  · /;s/$/  (DGX Spark reference: ~340-360k at util 0.73; it varies ±30k between starts, see README, Memory plan)/'
 
 echo "== generation (official sampling; at temp 0 it loops)"
