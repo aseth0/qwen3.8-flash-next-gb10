@@ -6,7 +6,7 @@ subdirectory, so going back is `git checkout <tag> && docker compose up -d flash
 ## v033-rssm — 2026-11-04
 
 **vLLM v0.33.0 with RecoverSSM, same checkpoint.** Measurements in [BENCHMARKS.md](BENCHMARKS.md). Throughput ties with
-`v030-nvidia`; repeated prefixes answer about twice as fast. Quality benchmarks were **not** repeated on this release.
+`v030-nvidia`; repeated prefixes answer about twice as fast. Quality ties too: HumanEval+ 158 / 152, τ² 59/74.
 
 Changed
 - Base image `vllm/vllm-openai:v0.33.0`, pinned by digest (PyTorch 2.14, CUDA 13.0). New image tag and cache subdirectory.

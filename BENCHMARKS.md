@@ -30,8 +30,18 @@ RecoverSSM" is the same image without PR #58863. Between two startups of the sam
 | 18k prefix + new tail, TTFT A → B → C | 4.39 → 1.07 → 1.07 s | 4.34 → **0.57 → 0.56** s | 4.18 → 1.90 → 0.79 s |
 
 Throughput is a tie. Most of the prefix-cache gain comes from v0.33 itself; RecoverSSM adds the KV headroom (+15 % at 16
-concurrent) and avoids the slow first reuse of the 18k prefix, on one sample. **Quality (HumanEval+, τ²) was not repeated:**
-the weights are the same, but the code that serves them is not.
+concurrent) and avoids the slow first reuse of the 18k prefix, on one sample.
+
+**Quality on the release image**, official sampling, against the running server. Neither difference is significant:
+
+| | v030-nvidia | v033-rssm | Paired, won / lost |
+|---|---|---|---|
+| HumanEval+ base | 156/164 (2026-10-25) | 158/164 | +3 / −1, p = 0.62 |
+| HumanEval+ plus | 149/164 (2026-10-25) | 152/164 | +6 / −3, p = 0.51 |
+| τ²-bench retail, 74 tasks, self-play | 60/74 and 63/74 (2026-10-09) | 59/74 (0.80) | +7 / −8 against the 60, p = 1.00; +7 / −11 against the 63, p = 0.48 |
+
+59/74 is at the low end of what this model has scored (57-63 across releases). Needle, tools, long agentic scenarios and
+vision were not repeated.
 
 ## v030-nvidia vs v030-rssm
 

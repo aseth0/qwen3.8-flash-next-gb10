@@ -136,12 +136,12 @@ an 18k prefix in 0.57 s (first: 4.34 s). The previous release took 0.87 s and 1.
 
 **Prefill:** 2,309 t/s at 8k and 2,852 t/s at 64k tokens, 14 % and 5 % below the previous release. Repeating the same prompt takes 0.46-0.58 s.
 
-**Quality** (measured on `v030-nvidia`, same weights; **not repeated on `v033-rssm`**):
+**Quality** (HumanEval+ and τ² measured on `v033-rssm`; the other rows on `v030-nvidia`, same weights, not repeated):
 
 | Benchmark | Result |
 |---|---|
-| HumanEval+ (164 problems) | 95.1 % base / 90.9 % plus (156 / 149; no repetition penalty, 2026-10-25) |
-| τ²-bench retail (74 tasks with deterministic grading, self-play) | 60-63/74 (0.81-0.85; previous release 57-59/74) |
+| HumanEval+ (164 problems) | 96.3 % base / 92.7 % plus (158 / 152; previous release 156 / 149, p = 0.62 / 0.51) |
+| τ²-bench retail (74 tasks with deterministic grading, self-play) | 59/74 (0.80; previous release 60-63/74, +7 / −8 against the 60, p = 1.00) |
 | Needle in a haystack | 16/16 (4/4 at 30k, 60k, 90k and 115k tokens) |
 | Long agentic scenarios (multi-step tool use, 3 scenarios) | 3/3 |
 | Tool calls (6 cases) | 6/6 |

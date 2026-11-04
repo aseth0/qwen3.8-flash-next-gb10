@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next on vLLM v0.33.0 + RecoverSSM for GB10 (DGX Spark, ASUS Ascent GX10…).
 # Measured on a DGX Spark (see BENCHMARKS.md): 50-55 t/s single stream, 228-232 t/s at 16 concurrent, repeated prefix
-# 0.4-0.6 s. Quality measured on v030-nvidia, not repeated on this release: HumanEval+ 156/149; τ² 63/74; needle 16/16 up to 115k.
+# 0.4-0.6 s. Quality: HumanEval+ 158/152; τ² 59/74; needle 16/16 up to 115k (the needle on v030-nvidia, same weights).
 #
 # Measured rules (see README): never < 10 experts, MTP-3 is optimal, keep the KV cache in BF16
 # (measured on v0.30: patched to fp8, it is slower). The KV cache is sized dynamically on purpose (never pinned with
