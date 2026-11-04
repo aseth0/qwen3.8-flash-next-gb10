@@ -13,13 +13,9 @@ import sys
 RE = f"{sys.argv[1]}/vllm/model_executor/layers/fused_moe/routed_experts.py"
 s = open(RE).read()
 
-old = ("            shard_dim=shard_dim,\n"
-       "        )\n"
-       "        expert_data.copy_(loaded_weight)\n")
+old = "\n        expert_data.copy_(loaded_weight)\n"  # the end of _load_w13 and _load_w2; deeper indented copies are other paths
 assert s.count(old) == 2, f"_load_w13/_load_w2 copy_ sites: expected 2, found {s.count(old)}"
-s = s.replace(old, ("            shard_dim=shard_dim,\n"
-                    "        )\n"
-                    "        expert_data.copy_(_qwen38_h2d_src(expert_data, loaded_weight))\n"))
+s = s.replace(old, "\n        expert_data.copy_(_qwen38_h2d_src(expert_data, loaded_weight))\n")
 
 s += '''
 

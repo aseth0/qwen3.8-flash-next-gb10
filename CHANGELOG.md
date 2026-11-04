@@ -3,7 +3,32 @@
 Releases are git tags; each builds its own image tag (`flashnext-gb10:<tag>`) and uses its own cache
 subdirectory, so going back is `git checkout <tag> && docker compose up -d flashnext`.
 
-## Unreleased
+## v033-rssm — 2026-11-04
+
+**vLLM v0.33.0 with RecoverSSM, same checkpoint.** Measurements in [BENCHMARKS.md](BENCHMARKS.md). Throughput ties with
+`v030-nvidia`; repeated prefixes answer about twice as fast. Quality benchmarks were **not** repeated on this release.
+
+Changed
+- Base image `vllm/vllm-openai:v0.33.0`, pinned by digest (PyTorch 2.14, CUDA 13.0). New image tag and cache subdirectory.
+- RecoverSSM now comes from vLLM PR #58863 at 3694757f (still open upstream), applied as a diff without its Kimi-K3 files.
+- Attention block 1696 → 1728 tokens, so `prefix-cache-retention-interval` is 1728. KV cache ~340-360k → ~385-408k tokens at util 0.73.
+- `mamba-cache-mode` removed from the config: deprecated in v0.33, it follows from `enable-prefix-caching`.
+- `verify.sh` expects 133 dense FP8 layers (145 on v0.30, same 6.22 GiB) and the 1728-token block.
+
+Removed
+- `docker/myllmbox/`. Fused draft metadata for the QSA cache (vLLM PR #58449) no longer applies to v0.33 and only gave +1-3 %.
+  The QSA RoPE clamp patched a file that no longer exists; the startup captures run without it.
+- The worker half of `patch_mamba_block_size.py`: upstream fixed it.
+
+Kept on purpose
+- This repo's NVFP4 draft head: vLLM's `draft_lm_head_quantization` needs an unquantized target `lm_head`, and dense FP8 converts it.
+- PLE via mmap: vLLM's own NVFP4 table support keeps the 26.8 GiB resident in GPU memory.
+
+Known
+- Prefill in cold is 14 % slower at 8k tokens and 5 % at 64k than on `v030-nvidia`.
+- PR #58863 reports −15-18 % at 32 concurrent requests with draft-less rows; `max-num-seqs` here is 16.
+
+## v030-nvidia-no-rp — 2026-10-25
 
 Changed
 - No server-side `repetition_penalty` any more (2026-10-25). The 1.05 default stopped the tool-call loop at temperature 0,

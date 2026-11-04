@@ -24,15 +24,15 @@ ok "serving on :$PORT"
 echo "== patches"
 L=$(docker logs "$C" 2>&1 | grep -v APIServer)
 n=$(grep -oP 'fn_dense_fp8: \K[0-9]+' <<<"$L" | tail -1)
-[ "$n" = 145 ] && ok "dense FP8: 145 layers" || bad "dense FP8: '${n:-not active}' (expected 145; is config/fn_dense_fp8.conf missing?)"
+[ "$n" = 133 ] && ok "dense FP8: 133 layers" || bad "dense FP8: '${n:-not active}' (expected 133; is config/fn_dense_fp8.conf missing?)"
 grep -q "built NVFP4 draft head" <<<"$L" && ok "NVFP4 draft head" || bad "NVFP4 draft head not found in the logs"
 grep -q "RecoverSSM speculative verify active" <<<"$L" && ok "RecoverSSM verify active" || bad "RecoverSSM not active (use-replayssm / VLLM_USE_V2_MODEL_RUNNER?)"
 bs=$(grep -oP 'Setting attention block size to \K[0-9]+' <<<"$L" | tail -1)
-[ "$bs" = 1696 ] && ok "attention block 1696 (prefix retention 1696)" || bad "attention block '${bs:-?}' (expected 1696; retention must be a multiple of it)"
+[ "$bs" = 1728 ] && ok "attention block 1728 (prefix retention 1728)" || bad "attention block '${bs:-?}' (expected 1728; retention must be a multiple of it)"
 grep -q "dtype NVFP4" <<<"$L" && ok "PLE table served via mmap in NVFP4 (26.8 GiB)" || bad "PLE loader: NVFP4 table line not found (is the checkpoint the hybrid built by prepare?)"
 ov=$(docker logs "$C" 2>&1 | grep -m1 'overridden by')
 [ -n "$ov" ] && ! grep -q "repetition_penalty" <<<"$ov" && ok "server default sampling from generation_config.json (temperature 0.7 / top_p 0.8 / top_k 20, no repetition penalty)" || bad "generation_config.json defaults not applied, or repetition_penalty still set (checkpoint built before 2026-10-25: rerun scripts/build-hybrid.py or delete its generation_config.json and run prepare)"
-grep -oP 'GPU KV cache size: [0-9,]+ tokens' <<<"$L" | tail -1 | sed 's/^/  · /;s/$/  (DGX Spark reference: ~340-360k at util 0.73; it varies ±30k between starts, see README, Memory plan)/'
+grep -oP 'GPU KV cache size: [0-9,]+ tokens' <<<"$L" | tail -1 | sed 's/^/  · /;s/$/  (DGX Spark reference: ~385-408k at util 0.73; it varies ±30k between starts, see README, Memory plan)/'
 
 echo "== generation (official sampling; at temp 0 it loops)"
 KEY=$KEY PORT=$PORT python3 - <<'P' || F=1

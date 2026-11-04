@@ -1,10 +1,9 @@
-# Qwen3.8-Flash-Next on vLLM v0.30.0 + RecoverSSM for GB10 (DGX Spark, ASUS Ascent GX10…).
-# The api-key does NOT go here: the container gets it via VLLM_API_KEY (.env file).
-# Measured on a DGX Spark (see BENCHMARKS.md): 54-55 t/s single stream, 205 t/s at 16 concurrent;
-# HumanEval+ 156/147; τ² 63/74; needle 16/16 up to 115k.
+# Qwen3.8-Flash-Next on vLLM v0.33.0 + RecoverSSM for GB10 (DGX Spark, ASUS Ascent GX10…).
+# Measured on a DGX Spark (see BENCHMARKS.md): 50-55 t/s single stream, 228-232 t/s at 16 concurrent, repeated prefix
+# 0.4-0.6 s. Quality measured on v030-nvidia, not repeated on this release: HumanEval+ 156/149; τ² 63/74; needle 16/16 up to 115k.
 #
 # Measured rules (see README): never < 10 experts, MTP-3 is optimal, keep the KV cache in BF16
-# (stock v0.30 rejects fp8; patched, it is slower). The KV cache is sized dynamically on purpose (never pinned with
+# (measured on v0.30: patched to fp8, it is slower). The KV cache is sized dynamically on purpose (never pinned with
 # kv-cache-memory: that can end in an out-of-memory at runtime); 0.73 instead of 0.715 covers the ~0.5 GiB the NVFP4 PLE
 # loader keeps in buffers. If memory is short, lower max-model-len, not the utilization.
 # Default sampling for clients that send none comes from the checkpoint's generation_config.json (temperature 0.7,
@@ -18,17 +17,16 @@ max-model-len: 131072
 max-num-seqs: 16
 max-num-batched-tokens: 8192
 enable-prefix-caching: true
-mamba-cache-mode: align
 # RecoverSSM (vllm PR #58863): speculative verify replays the accepted tokens from one read-only SSM
 # checkpoint instead of keeping a GDN/PLE state copy per draft position. More KV in the same memory
-# (~309k vs ~250-274k tokens), +45 % aggregate at 16 concurrent, same outputs quality-wise.
+# (~385-408k vs ~340k tokens on v0.33), +15 % aggregate at 16 concurrent, no queueing.
 # Needs Model Runner V2 (VLLM_USE_V2_MODEL_RUNNER=1, set in compose.yaml) and the Triton Mamba backend.
 use-replayssm: true
 mamba-backend: triton
-# With RecoverSSM the attention block becomes 1696 tokens (vLLM sizes it to the Mamba page), and the
+# With RecoverSSM the attention block becomes 1728 tokens on v0.33 (vLLM sizes it to the Mamba page), and the
 # retention interval must be a multiple of the block. Periodic checkpoints make the 1st reuse of a fixed
-# prefix + new tail hit: an 18k prefix's 2nd request drops from 3.6 s to 1.0 s TTFT.
-prefix-cache-retention-interval: 1696
+# prefix + new tail hit: an 18k prefix's 2nd request drops from 4.3 s to 0.6 s TTFT.
+prefix-cache-retention-interval: 1728
 enable-chunked-prefill: true
 reasoning-parser: qwen3
 enable-auto-tool-choice: true

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Applies this repo's two patches to vLLM v0.30 (qwen4_exp):
+"""Applies this repo's two patches to vLLM v0.33 (qwen4_exp):
 
   (1) Row-wise FP8 for the dense BF16 Linears (fn_dense_fp8.py): hook at the end of the
       Qwen4ExpForCausalLM constructor.
   (2) NVFP4 lm_head ONLY for the MTP drafter: the MTP's compute_logits uses an
       NVFP4-marlin copy of the lm_head; verification still uses the base model's lm_head.
       Marker files /tmp/vllm-draft-head-{bf16,fp8} switch it for A/B without restarting.
+      vLLM's own draft_lm_head_quantization can't replace this here: it needs an unquantized target lm_head,
+      and (1) has already moved that one to FP8.
 
 Usage: patch_flashnext.py <site-packages>
 """

@@ -10,6 +10,29 @@ are read as real.
 clients use. Temperature 0 is only used to compare MTP acceptance; **it can mislead**: several candidates
 looked faster at temperature 0 and were slower with the official sampling.
 
+## v033-rssm vs v030-nvidia
+
+All on one DGX Spark, 2026-11-04, one run each, the same day and the same harness (`vllm bench serve`, 512 output tokens,
+official sampling, mixed code and prose prompts). Embeddings and ASR models loaded but idle, CUDA MPS enabled. "v0.33, no
+RecoverSSM" is the same image without PR #58863. Between two startups of the same config single-request numbers move by ±5 %.
+
+| | v030-nvidia | **v033-rssm** | v0.33, no RecoverSSM |
+|---|---|---|---|
+| KV cache, tokens | 348k-362k | 386k-408k | 342k |
+| Attention block, tokens | 1696 | 1728 | 1600 |
+| Aggregate, 1 / 2 / 4 / 8 / 12 / 16 concurrent | 51 / 76 / 109 / 158 / 193 / 228 | 50 / 74 / 109 / 157 / 188 / **232** | 50 / 75 / 105 / 152 / 178 / 201 |
+| TTFT p50 at 16 concurrent | 619 ms | 661 ms | 975 ms |
+| KV cache used at 16 concurrent, peak | 42 % | 37 % | 97 % (1 request waiting) |
+| MTP tokens per step | 3.17 | 3.12 | 3.12 |
+| Prefill in cold, 1k / 8k / 32k / 64k, t/s | 1,744 / 2,675 / 2,932 / 3,003 | 1,645 / 2,309 / 2,830 / 2,852 | 1,670 / 2,433 / 2,946 / 2,986 |
+| Same prompt repeated, TTFT at 8k / 32k / 64k | 0.97 / 1.17 / 0.98 s | **0.46 / 0.48 / 0.58 s** | 0.61 / 0.70 / 0.57 s |
+| 7.4k prefix + new tail, TTFT A → B → C | 2.05 → 0.87 → 0.88 s | 1.86 → **0.38 → 0.37** s | 1.89 → 0.50 → 0.49 s |
+| 18k prefix + new tail, TTFT A → B → C | 4.39 → 1.07 → 1.07 s | 4.34 → **0.57 → 0.56** s | 4.18 → 1.90 → 0.79 s |
+
+Throughput is a tie. Most of the prefix-cache gain comes from v0.33 itself; RecoverSSM adds the KV headroom (+15 % at 16
+concurrent) and avoids the slow first reuse of the 18k prefix, on one sample. **Quality (HumanEval+, τ²) was not repeated:**
+the weights are the same, but the code that serves them is not.
+
 ## v030-nvidia vs v030-rssm
 
 All on one DGX Spark, 2026-10-09, same harness as below. "v030-rssm" is the previous release measured on 2026-10-05/06

@@ -1087,7 +1087,10 @@ def _apply_v030(cls: type) -> None:
         raise RuntimeError(f"PLE mmap: {mod.__name__} has no Qwen4ExpPLEDeviceEmbedding; layout not recognised")
 
     def __init__(self, config, embedding_dim, ple_dense_layer_id, max_total_tokens, *,
-                 data_parallel_rank, prefix, quant_config=None, params_dtype=None):
+                 data_parallel_rank, prefix, quant_config=None, params_dtype=None,
+                 use_sequence_parallel=False):
+        if use_sequence_parallel:
+            raise RuntimeError("PLE mmap: sequence parallel is not supported")
         real = {a: getattr(mod, a) for a in embed_attrs}
         for a in embed_attrs:
             setattr(mod, a, lambda n, d, **_kw: _MmapNgramEmbeddingV030(n, d))

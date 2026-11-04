@@ -4,11 +4,11 @@
 name: flashnext
 
 x-image: &image
-  image: flashnext-gb10:v030-nvidia   # one tag per release: the previous image stays for rollback
+  image: flashnext-gb10:v033-rssm   # one tag per release: the previous image stays for rollback
   build:
     context: ./docker
     args:
-      BASE: vllm/vllm-openai@sha256:8a69ffad015f138d7170c4ddc429e230a3bc1c1719f67e14324749df200a4b90
+      BASE: vllm/vllm-openai@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e
 
 services:
   flashnext:
@@ -26,12 +26,11 @@ services:
       VLLM_PLE_MMAP_MADVISE: random     # without this the PLE reads ahead and fills RAM
       VLLM_USE_FLASHINFER_SAMPLER: "1"
       VLLM_USE_V2_MODEL_RUNNER: "1"     # RecoverSSM requires Model Runner V2 (already the default for this model)
-      MBX_FUSED_DRAFT: "1"              # fused multi-step draft metadata for the QSA cache (0 = stock)
       HF_HUB_OFFLINE: "1"               # the model is local: don't contact HF at startup
     volumes:
       - ${MODELS_DIR:?MODELS_DIR missing in .env}:/models:ro
       # One cache subdirectory per release, so a rollback finds its own compiled kernels untouched.
-      - ${CACHE_DIR:-./cache}/v030-nvidia:/root/.cache/vllm
+      - ${CACHE_DIR:-./cache}/v033-rssm:/root/.cache/vllm
       # The FP8 patch reads its layer selection from here; without it, it turns off SILENTLY (−16 %).
       - ./config/fn_dense_fp8.conf:/root/.cache/vllm/fn_dense_fp8.conf:ro
       - ./config/model.yaml:/config/model.yaml:ro
