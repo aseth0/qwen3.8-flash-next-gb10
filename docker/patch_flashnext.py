@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Applies this repo's two patches to vLLM v0.33 (qwen4_exp):
+"""Applies this repo's two patches to vLLM v0.34 (qwen4_exp):
 
   (1) Row-wise FP8 for the dense BF16 Linears (fn_dense_fp8.py): hook at the end of the
       Qwen4ExpForCausalLM constructor.

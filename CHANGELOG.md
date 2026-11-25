@@ -3,6 +3,23 @@
 Releases are git tags; each builds its own image tag (`flashnext-gb10:<tag>`) and uses its own cache
 subdirectory, so going back is `git checkout <tag> && docker compose up -d flashnext`.
 
+## v034-rssm — 2026-11-25
+
+**vLLM v0.34.0 with RecoverSSM, same checkpoint and config.** Measurements in [BENCHMARKS.md](BENCHMARKS.md). Decode,
+concurrency and the prefix cache tie with `v033-rssm`; prefill in cold is 3-16 % faster and startup about 2 minutes shorter.
+Quality ties: HumanEval+ 156 / 147, τ² 60/74.
+
+Changed
+- Base image `vllm/vllm-openai:v0.34.0`, pinned by digest (PyTorch 2.14, CUDA 13.0). New image tag and cache subdirectory.
+- RecoverSSM diff (PR #58863 at 3694757f) rebased onto v0.34: two hunks, because v0.34 adds `KimiK31ForConditionalGeneration`
+  to the recoverable architectures and turns the last `else:` of the GDN forward into `elif not prefill_in_place:`. v0.34
+  already ships the Kimi half of RecoverSSM (`use_kda_recoverssm`); the Qwen half this model needs is still only in the PR.
+- `VLLM_USE_V2_MODEL_RUNNER` removed from `compose.yaml`: v0.34 dropped Model Runner V1 and warns that the variable is redundant.
+
+Removed
+- `docker/patch_moe_load_clone.py`: upstream now does the same with `copy_weight_` (`vllm/model_executor/utils.py`), which touches every page
+  of a mmap-backed weight on the CPU before the copy on integrated GPUs.
+
 ## v033-rssm — 2026-11-04
 
 **vLLM v0.33.0 with RecoverSSM, same checkpoint.** Measurements in [BENCHMARKS.md](BENCHMARKS.md). Throughput ties with

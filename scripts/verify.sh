@@ -26,7 +26,7 @@ L=$(docker logs "$C" 2>&1 | grep -v APIServer)
 n=$(grep -oP 'fn_dense_fp8: \K[0-9]+' <<<"$L" | tail -1)
 [ "$n" = 133 ] && ok "dense FP8: 133 layers" || bad "dense FP8: '${n:-not active}' (expected 133; is config/fn_dense_fp8.conf missing?)"
 grep -q "built NVFP4 draft head" <<<"$L" && ok "NVFP4 draft head" || bad "NVFP4 draft head not found in the logs"
-grep -q "RecoverSSM speculative verify active" <<<"$L" && ok "RecoverSSM verify active" || bad "RecoverSSM not active (use-replayssm / VLLM_USE_V2_MODEL_RUNNER?)"
+grep -q "RecoverSSM speculative verify active" <<<"$L" && ok "RecoverSSM verify active" || bad "RecoverSSM not active (use-replayssm in config/model.yaml?)"
 bs=$(grep -oP 'Setting attention block size to \K[0-9]+' <<<"$L" | tail -1)
 [ "$bs" = 1728 ] && ok "attention block 1728 (prefix retention 1728)" || bad "attention block '${bs:-?}' (expected 1728; retention must be a multiple of it)"
 grep -q "dtype NVFP4" <<<"$L" && ok "PLE table served via mmap in NVFP4 (26.8 GiB)" || bad "PLE loader: NVFP4 table line not found (is the checkpoint the hybrid built by prepare?)"

@@ -59,7 +59,7 @@ index 7312ef9c4e48..42704aa8160e 100644
  DEFAULT_BREAKABLE_CUDAGRAPH_ARCHITECTURES = frozenset(
      {
          "AliceAIForCausalLM",
-@@ -3423,22 +3430,23 @@ def validate_mamba_block_size(self) -> "VllmConfig":
+@@ -3423,23 +3430,24 @@ def validate_mamba_block_size(self) -> "VllmConfig":
      @model_validator(mode="after")
      def validate_mamba_cached_kernel(self) -> "VllmConfig":
          if not self.cache_config.use_replayssm:
@@ -71,6 +71,7 @@ index 7312ef9c4e48..42704aa8160e 100644
 +        recoverssm_architectures = (
              "KimiLinearForCausalLM",
              "KimiK3ForConditionalGeneration",
+             "KimiK31ForConditionalGeneration",
 +            *_QWEN4EXP_RECOVERSSM_ARCHS,
          )
 -        is_kda_model = (
@@ -320,7 +321,7 @@ index 121dcb9db63d..f7f055e3377a 100644
 -            core_attn_out[:num_actual_tokens] = core_attn_out_spec.squeeze(0)
 +            if core_attn_out_spec.data_ptr() != core_attn_out.data_ptr():
 +                core_attn_out[:num_actual_tokens] = core_attn_out_spec.squeeze(0)
-         else:
+         elif not prefill_in_place:
              core_attn_out[:num_actual_tokens] = core_attn_out_non_spec.squeeze(0)
  
 diff --git a/vllm/model_executor/layers/mamba/gdn/recoverssm_gdn.py b/vllm/model_executor/layers/mamba/gdn/recoverssm_gdn.py

@@ -27,7 +27,7 @@ import json, os, re, subprocess, sys
 D, MAXLEN, UTIL, KV_WANT = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), sys.argv[4]
 G = 2**30
 # --- measured on a DGX Spark (2026-10-09), see BENCHMARKS.md ---
-KV_BYTES_PER_TOKEN = 32.2e3       # 11.58 GiB -> 385,852 tokens on v0.33 (max-model-len 131072, MTP-3, RecoverSSM)
+KV_BYTES_PER_TOKEN = 32.2e3       # 11.58 GiB -> 385,852 tokens on v0.33, 369-390k on v0.34 (max-model-len 131072, MTP-3, RecoverSSM)
 DENSE_FP8_SAVING = 3.11 * G       # linear_attn + self_attn + lm_head BF16 -> FP8 at load (config/fn_dense_fp8.conf)
 RUNTIME_OVERHEAD = 5.1 * G        # measured "weights + non-torch" minus the shards: CUDA context, FlashInfer workspaces, Mamba
                                   # states, drafter head, PLE loader buffers (4.1 GiB on the BF16 PLE, 5.3 on the NVFP4 PLE)

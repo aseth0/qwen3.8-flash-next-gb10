@@ -10,6 +10,41 @@ are read as real.
 clients use. Temperature 0 is only used to compare MTP acceptance; **it can mislead**: several candidates
 looked faster at temperature 0 and were slower with the official sampling.
 
+## v034-rssm vs v033-rssm
+
+All on one DGX Spark, 2026-11-25, one run, same harness and prompts as the v033-rssm section below (`vllm bench serve`, 512
+output tokens, official sampling, mixed code and prose prompts; embeddings and ASR models loaded but idle, CUDA MPS enabled).
+The v033-rssm column is the 2026-11-04 run. Same checkpoint, same `config/model.yaml`.
+
+| | v033-rssm | **v034-rssm** |
+|---|---|---|
+| KV cache, tokens | 386k-408k | 370k-390k |
+| Attention block, tokens | 1728 | 1728 |
+| Aggregate, 1 / 2 / 4 / 8 / 12 / 16 concurrent | 50 / 74 / 109 / 157 / 188 / 232 | 50 / 75 / 107 / 157 / 190 / 230 |
+| TTFT p50 at 16 concurrent | 661 ms | 647 ms |
+| KV cache used at 16 concurrent, peak | 37 % | 36 % |
+| MTP tokens per step | 3.12 | 3.14 |
+| Prefill in cold, 1k / 8k / 32k / 64k, t/s | 1,645 / 2,309 / 2,830 / 2,852 | 1,700 / **2,690 / 2,945 / 3,093** |
+| Same prompt repeated, TTFT at 8k / 32k / 64k | 0.46 / 0.48 / 0.58 s | 0.46 / 0.48 / 0.57 s |
+| 7.4k prefix + new tail, TTFT A → B → C | 1.86 → 0.38 → 0.37 s | 1.79 → 0.37 → 0.36 s |
+| 18k prefix + new tail, TTFT A → B → C | 4.34 → 0.57 → 0.56 s | 4.12 → 0.53 → 0.59 s |
+| Startup to serving | 406 s | 286-291 s |
+
+Decode, concurrency and the prefix cache tie. Prefill in cold is 3-16 % faster, which wins back what v0.33 had lost against
+v0.30. The clone-on-load patch for the MoE is gone: v0.34 pre-faults mmap pages before each weight copy on
+integrated GPUs, and startup still got about 2 minutes shorter.
+
+**Quality**, official sampling, against the running server, same harness. Neither difference is significant:
+
+| | v033-rssm | v034-rssm | Paired, won / lost |
+|---|---|---|---|
+| HumanEval+ base | 158/164 | 156/164 | +2 / −4, p = 0.69 |
+| HumanEval+ plus | 152/164 | 147/164 | +3 / −8, p = 0.23 |
+| τ²-bench retail, 74 tasks, self-play | 59/74 | 60/74 (0.81) | +9 / −8, p = 1.00 |
+
+147 is at the low end of what this config has scored on HumanEval+ plus (147-152 across releases). Needle, tools, long
+agentic scenarios and vision were not repeated.
+
 ## v033-rssm vs v030-nvidia
 
 All on one DGX Spark, 2026-11-04, one run each, the same day and the same harness (`vllm bench serve`, 512 output tokens,

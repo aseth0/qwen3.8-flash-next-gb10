@@ -1,6 +1,6 @@
-# Qwen3.8-Flash-Next on vLLM v0.33.0 + RecoverSSM for GB10 (DGX Spark, ASUS Ascent GX10…).
+# Qwen3.8-Flash-Next on vLLM v0.34.0 + RecoverSSM for GB10 (DGX Spark, ASUS Ascent GX10…).
 # Measured on a DGX Spark (see BENCHMARKS.md): 50-55 t/s single stream, 228-232 t/s at 16 concurrent, repeated prefix
-# 0.4-0.6 s. Quality: HumanEval+ 158/152; τ² 59/74; needle 16/16 up to 115k (the needle on v030-nvidia, same weights).
+# 0.4-0.6 s. Quality: HumanEval+ 156/147 (158/152 on v0.33, no significant difference); τ² 60/74; needle 16/16 up to 115k (the needle on v030-nvidia, same weights).
 #
 # Measured rules (see README): never < 10 experts, MTP-3 is optimal, keep the KV cache in BF16
 # (measured on v0.30: patched to fp8, it is slower). The KV cache is sized dynamically on purpose (never pinned with
@@ -19,11 +19,11 @@ max-num-batched-tokens: 8192
 enable-prefix-caching: true
 # RecoverSSM (vllm PR #58863): speculative verify replays the accepted tokens from one read-only SSM
 # checkpoint instead of keeping a GDN/PLE state copy per draft position. More KV in the same memory
-# (~385-408k vs ~340k tokens on v0.33), +15 % aggregate at 16 concurrent, no queueing.
-# Needs Model Runner V2 (VLLM_USE_V2_MODEL_RUNNER=1, set in compose.yaml) and the Triton Mamba backend.
+# (~370-408k vs ~340k tokens without it), +15 % aggregate at 16 concurrent, no queueing.
+# Needs Model Runner V2 (the only runner since v0.34) and the Triton Mamba backend.
 use-replayssm: true
 mamba-backend: triton
-# With RecoverSSM the attention block becomes 1728 tokens on v0.33 (vLLM sizes it to the Mamba page), and the
+# With RecoverSSM the attention block becomes 1728 tokens on v0.33-v0.34 (vLLM sizes it to the Mamba page), and the
 # retention interval must be a multiple of the block. Periodic checkpoints make the 1st reuse of a fixed
 # prefix + new tail hit: an 18k prefix's 2nd request drops from 4.3 s to 0.6 s TTFT.
 prefix-cache-retention-interval: 1728

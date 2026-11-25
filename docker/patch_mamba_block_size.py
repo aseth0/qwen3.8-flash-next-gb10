@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prefix caching (align mode) on hybrid models with a small-block KV group, vLLM v0.33. Upstream already fixed the worker's
+"""Prefix caching (align mode) on hybrid models with a small-block KV group, vLLM v0.33-v0.34. Upstream already fixed the worker's
 state-slot seed (it uses mamba_block_size). This keeps the scheduler's prefill split on Mamba block boundaries even if
 cache_config.block_size is pulled down by another group: self.block_size is the scheduler block size, and when both match
 this changes nothing. Originally diagnosed on GB10 with state checksums (blazux/qwen3.8-Flash-DGX)."""
