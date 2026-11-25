@@ -2,13 +2,16 @@
 # Runs INSIDE the image (docker compose run --rm prepare): uses its hf and its torch. Idempotent: safe to re-run.
 # 1) downloads nvidia/Qwen3.8-Flash-Next-NVFP4 at the validated revision, without its FP8 MTP+PLE file (50 GB, not used);
 # 2) downloads the 36 files of starkweatherdigital/qwen3.8-flash-next-nvfp4 that hold the NVFP4 MTP experts and PLE;
-# 3) builds the checkpoint this config serves (scripts/build-hybrid.py: streaming byte copies, ~2 min).
+# 3) builds the hybrid checkpoint (scripts/build-hybrid.py: streaming byte copies, ~2 min);
+# 4) builds the checkpoint this config serves: the hybrid with the MTP drafter's NVFP4 scales made consistent
+#    (scripts/fix-mtp-scales.py: links to the hybrid plus a corrected 1.3 GB MTP file, ~1 min).
 set -euo pipefail
 NV_REPO=nvidia/Qwen3.8-Flash-Next-NVFP4;              NV_REV=fc694b54fb0174e0913e6adf86691ef85a4ead47
 ST_REPO=starkweatherdigital/qwen3.8-flash-next-nvfp4; ST_REV=1b304e5f99de0faaf43c3a959f2b4000294bf65c
 NV=/models/qwen3.8-flash-next-nvidia-nvfp4
 ST=/models/qwen3.8-flash-next-nvfp4-parts
 DST=/models/qwen3.8-flash-next-nvfp4-hybrid
+FIX=/models/qwen3.8-flash-next-nvfp4-hybrid-mtpfix
 ST_FILES=(model.safetensors.index.json config.json model-00026.safetensors model-00028.safetensors)
 for i in $(seq 98 131); do ST_FILES+=("model-$(printf %05d "$i").safetensors"); done
 
@@ -42,4 +45,9 @@ else
   echo "== building the hybrid checkpoint (~28 GB of output, ~2 min)"
   python3 /scripts/build-hybrid.py "$NV" "$ST" "$DST"
 fi
-echo "== done: $(du -shL "$DST" | cut -f1) in $DST"
+if [ -f "$FIX/.mtpfix-complete" ]; then echo "== MTP scales already fixed in $FIX"
+else
+  echo "== fixing the MTP drafter scales (~1.3 GB of output, ~1 min)"
+  python3 /scripts/fix-mtp-scales.py "$DST" "$FIX"
+fi
+echo "== done: $(du -shL "$FIX" | cut -f1) in $FIX"

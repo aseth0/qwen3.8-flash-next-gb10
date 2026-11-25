@@ -9,7 +9,9 @@
 # Default sampling for clients that send none comes from the checkpoint's generation_config.json (temperature 0.7,
 # top_p 0.8, top_k 20). No repetition_penalty: 1.05 stopped the tool-call loop at temperature 0, but over long texts it
 # drops accents and letters (BENCHMARKS.md, 2026-10-25). Don't send temperature 0 to this model.
-model: /models/qwen3.8-flash-next-nvfp4-hybrid
+# The served directory is the hybrid with the MTP drafter's NVFP4 scales made consistent (scripts/fix-mtp-scales.py, run by
+# prepare). To serve the hybrid as built, point this at /models/qwen3.8-flash-next-nvfp4-hybrid.
+model: /models/qwen3.8-flash-next-nvfp4-hybrid-mtpfix
 served-model-name: qwen3.8-flash-next
 load-format: safetensors
 gpu-memory-utilization: 0.73

@@ -10,6 +10,23 @@ are read as real.
 clients use. Temperature 0 is only used to compare MTP acceptance; **it can mislead**: several candidates
 looked faster at temperature 0 and were slower with the official sampling.
 
+## MTP scale fix (v034-rssm-mtpfix)
+
+On one DGX Spark, 2026-11-12, on v0.33 (`v033-rssm` image and config, only `model:` changed). Acceptance with a fixed prompt
+bank (prose in two languages, reasoning, code; official sampling), 3 runs of the original hybrid against 10 of the fixed one:
+2.500 → 2.506 MTP tokens per step (+0.2 %, 95 % interval −0.5..+1.0). Quality against the running server, same harness as the
+other sections:
+
+| | hybrid | hybrid-mtpfix | Paired, won / lost |
+|---|---|---|---|
+| HumanEval+ base | 158/164 | 157/164 | +1 / −2, p = 1.00 |
+| HumanEval+ plus | 152/164 | 150/164 | +2 / −4, p = 0.69 |
+| τ²-bench retail, 74 tasks, self-play | 59/74 | 62/74 | +12 / −9, p = 0.66 |
+
+No measurable change. A probe of the drafter's ceiling with the server's logprobs (what a perfect drafter would accept)
+put prose at 3.39 tokens per step against 2.30 measured, so the drafter has room, but the scale mismatch is not what costs it.
+The v034-rssm numbers above were measured on the original hybrid; production has served the fixed one since 2026-11-12.
+
 ## v034-rssm vs v033-rssm
 
 All on one DGX Spark, 2026-11-25, one run, same harness and prompts as the v033-rssm section below (`vllm bench serve`, 512

@@ -1,5 +1,5 @@
 # git clone → cp .env.example .env → docker compose build
-#   → docker compose run --rm prepare   (once: downloads the two checkpoints and builds the hybrid)
+#   → docker compose run --rm prepare   (once: downloads the two checkpoints and builds the hybrid + MTP fix)
 #   → docker compose up -d flashnext → scripts/verify.sh
 name: flashnext
 

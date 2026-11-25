@@ -52,14 +52,28 @@ scripts/ple-fill.sh                # optional: puts the n-gram table in the page
 Endpoint: `http://<host>:8010/v1` (OpenAI-compatible), model `qwen3.8-flash-next`,
 `Authorization: Bearer <API_KEY>`.
 
+### Upgrading from `v034-rssm`
+
+Same image. `prepare` adds `qwen3.8-flash-next-nvfp4-hybrid-mtpfix/` next to the hybrid it already built (links plus a corrected
+1.3 GB MTP file, ~1 minute, nothing downloaded) and `config/model.yaml` now points at it.
+
+```bash
+git pull
+docker compose run --rm prepare               # skips what exists, fixes the MTP scales
+docker compose up -d --force-recreate flashnext   # ~5 min of downtime
+scripts/verify.sh
+```
+
+**Rollback:** `git checkout v034-rssm && docker compose up -d --force-recreate flashnext` (the hybrid is untouched).
+
 ### Upgrading from `v033-rssm`
 
-The checkpoint and the config are the same, so `prepare` does not run again. The base image changes, so the build downloads
-about 27 GB.
+The base image changes, so the build downloads about 27 GB; `prepare` only adds the MTP fix (~1 minute, nothing downloaded).
 
 ```bash
 git pull
 docker compose build               # new tag flashnext-gb10:v034-rssm; the previous image stays
+docker compose run --rm prepare    # skips what exists, fixes the MTP scales
 docker compose up -d flashnext     # recreates vllm-fn: ~5 min of downtime
 scripts/verify.sh
 ```
@@ -69,12 +83,13 @@ scripts/verify.sh
 
 ### Upgrading from `v030-nvidia`
 
-The checkpoint is the same, so `prepare` does not run again. The base image changes, so the build downloads about 27 GB. A
+The base image changes, so the build downloads about 27 GB; `prepare` only adds the MTP fix (~1 minute). A
 checkpoint built before 2026-10-25 still needs the `repetition_penalty` line removed (see [CHANGELOG.md](CHANGELOG.md)).
 
 ```bash
 git pull
 docker compose build               # new tag flashnext-gb10:v034-rssm; the previous image stays
+docker compose run --rm prepare    # skips what exists, fixes the MTP scales
 docker compose up -d flashnext     # recreates vllm-fn: ~5 min of downtime
 scripts/verify.sh
 ```
@@ -111,6 +126,14 @@ two new files with the NVFP4 MTP experts (1.3 GB) and the NVFP4 PLE (26.8 GB), a
 byte copies: no RAM, ~2 minutes. The PLE loader in the image reads the NVFP4 table straight from those files via mmap and
 dequantizes rows on the GPU, bit-for-bit equal to the BF16 conversion the previous releases used.
 
+Last, `scripts/fix-mtp-scales.py` builds the directory that is actually served, `qwen3.8-flash-next-nvfp4-hybrid-mtpfix/`. vLLM
+fuses each expert's `gate_proj` and `up_proj` into one weight with a single global NVFP4 scale (the gate's), but in the MTP
+experts of the second checkpoint the two scales differ in 506 of 512 experts, so the drafter ran every `up_proj` off by up to
+3.6x (vLLM warns: `w1_weight_scale_2 must match w3_weight_scale_2`). The script re-expresses the projection with the smaller
+scale under the larger one (its FP8 block scales shrink, its FP4 codes are re-rounded against the intended weights: 2.6 %
+median relative error) and links everything else to the hybrid. ~1 minute, 1.3 GB. Only the drafter changes, so the output
+cannot change, and speed was measured the same (+0.2 %, noise): it removes a known error rather than buying speed.
+
 ## What's inside
 
 | | |
@@ -122,7 +145,7 @@ dequantizes rows on the GPU, bit-for-bit equal to the BF16 conversion the previo
 | `docker/fn_dense_fp8.py`, `patch_flashnext.py` | row-wise FP8 for the dense Linears (**+16 % on code**) and NVFP4 draft head (**+13-25 %**) |
 | `config/model.yaml` | the vLLM config (no api-key: it comes from `VLLM_API_KEY`) |
 | `config/fn_dense_fp8.conf` | which layers go to FP8. **If missing, the patch silently turns off** |
-| `scripts/build-hybrid.py`, `prepare-weights.sh` | download the two checkpoints at pinned revisions and build the served directory |
+| `scripts/build-hybrid.py`, `fix-mtp-scales.py`, `prepare-weights.sh` | download the two checkpoints at pinned revisions, build the hybrid and fix the MTP drafter's scales |
 | `scripts/plan-memory.sh`, `ple-fill.sh` | memory arithmetic before starting; put the PLE in the page cache after starting |
 | `compose.yaml` | `flashnext` service (container `vllm-fn`) and `prepare` (separate profile) |
 | `CHANGELOG.md`, `BENCHMARKS.md` | what changed per release, and every measurement behind it |

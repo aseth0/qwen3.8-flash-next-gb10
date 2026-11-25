@@ -3,6 +3,22 @@
 Releases are git tags; each builds its own image tag (`flashnext-gb10:<tag>`) and uses its own cache
 subdirectory, so going back is `git checkout <tag> && docker compose up -d flashnext`.
 
+## v034-rssm-mtpfix — 2026-11-25
+
+**Same image, the MTP drafter's NVFP4 scales made consistent.** `prepare` gains a fourth step, `scripts/fix-mtp-scales.py`,
+and `config/model.yaml` serves `qwen3.8-flash-next-nvfp4-hybrid-mtpfix/`. The hybrid is not modified.
+
+Changed
+- vLLM keeps one global scale for each fused `gate_proj`/`up_proj` pair, but the NVFP4 MTP experts of
+  `starkweatherdigital/qwen3.8-flash-next-nvfp4` carry two different ones in 506 of 512 experts, so the drafter computed
+  `up_proj` with the gate's scale (median error 24 %, up to 3.6x). The fix puts both under the larger scale and re-rounds
+  the other projection: 2.6 % median relative error against the intended weights, startup warning gone.
+- `verify.sh` checks that vLLM no longer warns `w1_weight_scale_2 must match w3_weight_scale_2`.
+
+Measured (on v0.33, same harness as below): MTP tokens per step 2.500 → 2.506 (+0.2 %, 95 % interval −0.5..+1.0), HumanEval+
+157 / 150 against 158 / 152 (p = 1.00 / 0.69), τ² 62/74 against 59/74 (+12 / −9, p = 0.66). No speed or quality change; the
+drafter can only change speed. It is in the release because it serves the weights the checkpoint meant.
+
 ## v034-rssm — 2026-11-25
 
 **vLLM v0.34.0 with RecoverSSM, same checkpoint and config.** Measurements in [BENCHMARKS.md](BENCHMARKS.md). Decode,
